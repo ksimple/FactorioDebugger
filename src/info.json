@@ -1,0 +1,10 @@
+{
+    "name": "debugger",
+    "version": "${VERSION}",
+    "title": "debugger",
+    "author": "ksimple",
+    "factorio_version": "1.1",
+    "dependencies": [
+    ],
+    "description": "This mod adds some debug related functionality to help diagnostic a mod."
+}
