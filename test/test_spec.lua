@@ -380,7 +380,7 @@ describe('responsive', function()
             local log_list = {}
 
             local binding = responsive.binding.create(data, 'property1', responsive.binding.MODE.PULL)
-            table.insert(execution_list, responsive.execution.create_execution_for_binding(binding, function(value)
+            table.insert(execution_list, responsive.execution.create_value_execution(binding, function(value)
                 table.insert(log_list, 'process property1 ' .. value)
             end))
             local execution = responsive.execution.create_sequence_execution(execution_list)
@@ -410,12 +410,12 @@ describe('responsive', function()
             local execution_list = {}
 
             local binding1 = responsive.binding.create(data, 'property1', responsive.binding.MODE.PULL)
-            table.insert(execution_list, responsive.execution.create_execution_for_binding(binding1, function(value)
+            table.insert(execution_list, responsive.execution.create_value_execution(binding1, function(value)
                 table.insert(log_list, 'process property1 ' .. value)
             end))
 
             local binding2 = responsive.binding.create(data, 'property2.property3', responsive.binding.MODE.PULL)
-            table.insert(execution_list, responsive.execution.create_execution_for_binding(binding2, function(value)
+            table.insert(execution_list, responsive.execution.create_value_execution(binding2, function(value)
                 table.insert(log_list, 'process property2.property3 ' .. value)
             end))
 
@@ -451,7 +451,7 @@ describe('responsive', function()
             local execution_list = {}
             local binding = responsive.binding
                                 .create(data, 'property2.property3', responsive.binding.MODE.PULL_AND_PUSH)
-            table.insert(execution_list, responsive.execution.create_execution_for_binding(binding, function(value)
+            table.insert(execution_list, responsive.execution.create_value_execution(binding, function(value)
                 table.insert(log_list, 'process property2.property3 ' .. value)
             end))
 

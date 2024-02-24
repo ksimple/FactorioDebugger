@@ -168,6 +168,9 @@ M.watch.PROTOTYPE = {
         self.__watch_dispose_list = {}
         self.__recorded_reactive_property = {}
     end,
+    dispose = function(self)
+        self:reset()
+    end,
     add_listener = function(self, ...)
         self.__notifier:add_listener(...)
     end
@@ -304,27 +307,38 @@ M.execution.create = function(process, dirty, dispose, tag)
     return execution
 end
 
-M.execution.binding_execution = {
+M.execution.value_execution = {
     dirty = function(self)
-        return self.tag.binding:dirty()
-    end,
-    process = function(self)
-        self.tag.process_value_change(M.binding.unwrap(self.tag.binding))
-        if getmetatable(self.tag.binding) == M.binding.METATABLE then
-            self.tag.binding:set_dirty(false)
+        if getmetatable(self.tag.value) == M.binding.METATABLE then
+            return self.tag.value:dirty()
+        else
+            return not self.tag.is_first
         end
     end,
+    process = function(self)
+        if getmetatable(self.tag.value) == M.binding.METATABLE then
+            self.tag.process_value_change(self.tag.value:get())
+            self.tag.value:set_dirty(false)
+        elseif self.tag.is_first then
+            self.tar.process_value_change(self.tag.value)
+        end
+        self.tag.is_first = false
+    end,
     dispose = function(self)
+        if getmetatable(self.tag.value) == M.binding.METATABLE then
+            self.tag.value:dispose()
+        end
     end
 }
 
-M.execution.create_execution_for_binding = function(binding, process_value_change)
-    if getmetatable(binding) ~= M.binding.METATABLE then
+M.execution.create_value_execution = function(value, process_value_change)
+    if getmetatable(value) ~= M.binding.METATABLE then
         error('can only accept binding')
     end
-    return M.execution.create(M.execution.binding_execution.process, M.execution.binding_execution.dirty,
-        M.execution.binding_execution.dispose, {
-            binding = binding,
+    return M.execution.create(M.execution.value_execution.process, M.execution.value_execution.dirty,
+        M.execution.value_execution.dispose, {
+            value = value,
+            is_first = true,
             process_value_change = process_value_change
         })
 end
