@@ -1,12 +1,12 @@
-local ui_main_frame = require("ui.main_frame")
-local log = require("lib.log")
+local ui_main_frame = require('ui.main_frame')
+local log = require('lib.log')
 
 log.global_min_level = log.level.debug
 
 log.debug('lua version: ' .. _VERSION)
 
 local function init_player(player)
-    game.print("init_player, player_index: " .. player.index)
+    game.print('init_player, player_index: ' .. player.index)
     if not global.player_map then
         global.player_map = {}
     end
@@ -18,7 +18,7 @@ local function init_player(player)
 end
 
 local function init()
-    game.print("init")
+    game.print('init')
     for _, player in pairs(game.players) do
         init_player(player)
     end
@@ -34,7 +34,7 @@ local function update_ui(player_index)
 end
 
 local function handle_lua_shortcut(event)
-    game.print("handle_lua_shortcut")
+    game.print('handle_lua_shortcut')
     game.print(game.table_to_json(event))
     game.print(game.table_to_json(global))
     log.warn('test')
@@ -52,13 +52,13 @@ local function handle_lua_shortcut(event)
 end
 
 local function handle_player_create(event)
-    game.print("handle_player_created")
+    game.print('handle_player_created')
     game.print(game.table_to_json(event))
     init_player(game.get_player(event.player_index))
 end
 
 local function handle_configuration_change(event)
-    game.print("handle_configuration_change")
+    game.print('handle_configuration_change')
     game.print(game.table_to_json(event))
     init()
 end

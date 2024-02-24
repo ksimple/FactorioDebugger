@@ -6,4 +6,5 @@ M.set_global = function(g)
     global = g
 end
 
+M.set_global({})
 return M

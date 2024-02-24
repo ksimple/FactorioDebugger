@@ -31,7 +31,7 @@ M.__log = function(level, message)
 
     if os then
         ---@diagnostic disable-next-line: cast-local-type
-        time_or_tick = os.date("%Y-%m-%dT%H:%M:%SZ")
+        time_or_tick = os.date('%Y-%m-%dT%H:%M:%SZ')
     elseif game then
         time_or_tick = game.tick
     end

@@ -1,10 +1,10 @@
-local vnode = require("ui.vnode")
-local responsive = require("lib.responsive")
+local vnode = require('ui.vnode')
+local responsive = require('lib.responsive')
 
 local M = {}
 
 M.build = function(parent)
-    game.print("main_frame.build")
+    game.print('main_frame.build')
 
     local element = parent.add({
         type = 'frame'
