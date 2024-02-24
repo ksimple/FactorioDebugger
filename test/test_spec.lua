@@ -74,18 +74,20 @@ describe('responsive', function()
             local log_list = {}
 
             notifier:add_listener('read', function(sender, event, message)
-                table.insert(log_list, 'read' .. sender .. event .. message)
+                table.insert(log_list, 'read' .. ' ' .. sender .. ' ' .. event .. ' ' .. message)
             end)
             notifier:add_listener('write', function(sender, event, message)
-                table.insert(log_list, 'write' .. sender .. event .. message)
+                table.insert(log_list, 'write' .. ' ' .. sender .. ' ' .. event .. ' ' .. message)
             end)
 
             notifier:emit('sender', 'read', 'message')
             notifier:emit('sender', 'write', 'message')
 
+            assert(#notifier.__listener['read'] == 1)
+            assert(#notifier.__listener['write'] == 1)
             assert(#log_list == 2)
-            assert(log_list[1] == "readsenderreadmessage")
-            assert(log_list[2] == "writesenderwritemessage")
+            assert(log_list[1] == "read sender read message")
+            assert(log_list[2] == "write sender write message")
         end)
 
         it('dispose', function()
@@ -96,20 +98,29 @@ describe('responsive', function()
             local log_list = {}
 
             local dispose = notifier:add_listener('read', function(sender, event, message)
-                table.insert(log_list, 'read' .. sender .. event .. message)
+                table.insert(log_list, 'read' .. ' ' .. sender .. ' ' .. event .. ' ' .. message)
+            end)
+            notifier:add_listener('read', function(sender, event, message)
+                table.insert(log_list, 'read' .. ' ' .. sender .. ' ' .. event .. ' ' .. message)
             end)
             notifier:add_listener('write', function(sender, event, message)
-                table.insert(log_list, 'write' .. sender .. event .. message)
+                table.insert(log_list, 'write' .. ' ' .. sender .. ' ' .. event .. ' ' .. message)
             end)
 
             notifier:emit('sender', 'read', 'message')
             notifier:emit('sender', 'write', 'message')
             dispose()
             notifier:emit('sender', 'read', 'message')
+            notifier:emit('sender', 'write', 'message')
 
-            assert(#log_list == 2)
-            assert(log_list[1] == "readsenderreadmessage")
-            assert(log_list[2] == "writesenderwritemessage")
+            assert(#notifier.__listener['read'] == 1)
+            assert(#notifier.__listener['write'] == 1)
+            assert(#log_list == 5)
+            assert(log_list[1] == "read sender read message")
+            assert(log_list[2] == "read sender read message")
+            assert(log_list[3] == "write sender write message")
+            assert(log_list[4] == "read sender read message")
+            assert(log_list[5] == "write sender write message")
         end)
 
         it('parent', function()
@@ -243,15 +254,45 @@ describe('responsive', function()
             end)
             watch:record()
             local property1 = reactive.property1
+            property1 = reactive.property1
             watch:stop()
 
             table.insert(log_list, 'begin')
             reactive.property1 = 'test1_changed'
 
             log.debug(table_to_json(log_list))
+
+            assert(#responsive.reactive_global_notifier.__listener[responsive.EVENT.PROPERTY_READ] == 0)
+            assert(#reactive.__notifier.__listener[responsive.EVENT.PROPERTY_CHANGED] == 1)
             assert(#log_list == 2)
             assert(log_list[1] == 'begin')
             assert(log_list[2] == reactive.__id .. ' property_changed property1 test1 test1_changed')
+        end)
+
+        it('reset', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local watch = responsive.watch.create()
+            local reactive = responsive.reactive.create({
+                property1 = 'test1'
+            })
+            local log_list = {}
+
+            watch:add_listener(responsive.EVENT.PROPERTY_CHANGED, function(sender, event, name, old_value, new_value)
+                table.insert(log_list,
+                    sender.__id .. ' ' .. event .. ' ' .. name .. ' ' .. old_value .. ' ' .. new_value)
+            end)
+            watch:record()
+            local property1 = reactive.property1
+            watch:stop()
+            watch:reset()
+
+            reactive.property1 = 'test1_changed'
+            log.debug(table_to_json(log_list))
+
+            assert(#reactive.__notifier.__listener[responsive.EVENT.PROPERTY_CHANGED] == 0)
+            assert(#log_list == 0)
         end)
     end)
 

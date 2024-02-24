@@ -9,31 +9,32 @@ M.build = function(parent)
     local element = parent.add({
         type = 'frame'
     })
-    local execution_plan = responsive.create_execution_plan()
-    local data = responsive.create_reactive_table({
+    local execution_list = {}
+    local data = responsive.reactive.create({
         caption = 'test ' .. game.tick,
         width = 500,
         height = 400
     })
 
-    vnode.build_execution_plan(element, {
+    vnode.build_execution_list(element, {
         type = 'frame',
         caption = 'caption',
         style = {
             width = 'width',
             height = 'height'
         }
-    }, data, execution_plan)
+    }, data, execution_list)
+
+    local execution = responsive.execution.create_sequence_execution(execution_list)
 
     local ui_node = {
         element = element,
         update_ui = function(self)
-            if self.execution_plan.dirty() then
-                self.execution_plan:execute()
-                self.execution_plan:clear_dirty()
+            if self.execution:dirty() then
+                self.execution:process()
             end
         end,
-        execution_plan = execution_plan,
+        execution = execution,
         data = data
     }
 

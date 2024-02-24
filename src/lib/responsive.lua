@@ -131,19 +131,24 @@ M.watch.METATABLE = {
     __type = 'kwatch'
 }
 M.watch.PROTOTYPE = {
-    __watch_dispose_list = {},
     record = function(self)
-        self:clear()
+        self:reset()
 
         -- 监控所有被读取的属性
         self.__global_event_listener_dispose = M.reactive_global_notifier:add_listener(M.EVENT.PROPERTY_READ,
-            function(reactive, event, get_name)
-                table.insert(self.__watch_dispose_list,
-                    reactive:__add_listener(M.EVENT.PROPERTY_CHANGED, function(_, event, set_name, old_value, new_value)
-                        if get_name == set_name then
-                            self.__notifier:emit(reactive, M.EVENT.PROPERTY_CHANGED, set_name, old_value, new_value)
-                        end
-                    end))
+            function(reactive, _, get_name)
+                if not self.__recorded_reactive_property[reactive.__id] then
+                    self.__recorded_reactive_property[reactive.__id] = {}
+                end
+                if self.__recorded_reactive_property[reactive.__id][get_name] == nil then
+                    table.insert(self.__watch_dispose_list,
+                        reactive:__add_listener(M.EVENT.PROPERTY_CHANGED, function(_, _, set_name, old_value, new_value)
+                            if get_name == set_name then
+                                self.__notifier:emit(reactive, M.EVENT.PROPERTY_CHANGED, set_name, old_value, new_value)
+                            end
+                        end))
+                    self.__recorded_reactive_property[reactive.__id][get_name] = true
+                end
             end)
     end,
     stop = function(self)
@@ -152,13 +157,16 @@ M.watch.PROTOTYPE = {
             self.__global_event_listener_dispose = nil
         end
     end,
-    clear = function(self)
+    reset = function(self)
         self:stop()
 
-        for _, dispose in ipairs(self.__watch_dispose_list) do
-            dispose()
+        if self.__watch_dispose_list then
+            for _, dispose in ipairs(self.__watch_dispose_list) do
+                dispose()
+            end
         end
         self.__watch_dispose_list = {}
+        self.__recorded_reactive_property = {}
     end,
     add_listener = function(self, ...)
         self.__notifier:add_listener(...)
@@ -215,9 +223,6 @@ M.binding.PROTOTYPE = {
                 self.__value_cache_value = nil
             end)
         end
-
-        -- 释放所有之前监控的属性
-        self.__watch:clear()
 
         if self.__mode ~= M.binding.MODE.ONE_TIME then
             -- 监控所有被读取的属性
