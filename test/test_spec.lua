@@ -176,7 +176,7 @@ describe('responsive', function()
 
         reactive_table.property1 = 'test1'
         binding1:get()
-        assert(not binding1:dirty())
+        assert(binding1:dirty())
         assert(binding1:get() == 'test1')
         binding1:set('test2')
         assert(not binding1:dirty())
@@ -188,30 +188,27 @@ describe('responsive', function()
         local responsive = require('lib.responsive')
 
         helper.set_global({})
-        local execution_plan = responsive.create_execution_plan()
+        local execution_list = {}
         local data = responsive.create_reactive_table({
             property1 = 'test1',
             property2 = 'test2'
         })
         local log_list = {}
 
-        execution_plan:append(responsive.create_visual_execution(data, "property1", responsive.BINDING_MODE.PULL,
-            function(value)
-                table.insert(log_list, 'process property1 ' .. value)
-            end))
+        local binding = responsive.create_binding(data, "property1", responsive.BINDING_MODE.PULL)
+        table.insert(execution_list, responsive.execution.create_execution_for_binding(binding, function(value)
+            table.insert(log_list, 'process property1 ' .. value)
+        end))
+        local execution = responsive.execution.create_sequence_execution(execution_list)
 
-        execution_plan:execute()
-        execution_plan:clear_dirty()
+        execution:process()
         assert(#log_list == 1)
-        execution_plan:execute()
-        execution_plan:clear_dirty()
+        execution:process()
         assert(#log_list == 1)
         data.property1 = 'test1_changed'
-        execution_plan:execute()
-        execution_plan:clear_dirty()
+        execution:process()
         assert(#log_list == 2)
-        execution_plan:execute()
-        execution_plan:clear_dirty()
+        execution:process()
         assert(#log_list == 2)
         assert(log_list[1] == 'process property1 test1')
         assert(log_list[2] == 'process property1 test1_changed')
@@ -222,7 +219,6 @@ describe('responsive', function()
         local responsive = require('lib.responsive')
 
         helper.set_global({})
-        local execution_plan = responsive.create_execution_plan()
         local data = responsive.create_reactive_table({
             property1 = 'test1',
             property2 = {
@@ -230,42 +226,34 @@ describe('responsive', function()
             }
         })
         local log_list = {}
+        local execution_list = {}
 
-        execution_plan:append(responsive.create_visual_execution(data, "property1", responsive.BINDING_MODE.PULL,
-            function(value)
-                table.insert(log_list, 'process property1 ' .. value)
-            end))
+        local binding1 = responsive.create_binding(data, 'property1', responsive.BINDING_MODE.PULL)
+        table.insert(execution_list, responsive.execution.create_execution_for_binding(binding1, function(value)
+            table.insert(log_list, 'process property1 ' .. value)
+        end))
 
-        execution_plan:append(responsive.create_visual_execution(data, "property1", responsive.BINDING_MODE.PULL,
-            function(value)
-                table.insert(log_list, 'process property1 ' .. value)
-            end))
+        local binding2 = responsive.create_binding(data, 'property2.property3', responsive.BINDING_MODE.PULL)
+        table.insert(execution_list, responsive.execution.create_execution_for_binding(binding2, function(value)
+            table.insert(log_list, 'process property2.property3 ' .. value)
+        end))
 
-        execution_plan:append(responsive.create_visual_execution(data, "property2.property3",
-            responsive.BINDING_MODE.PULL, function(value)
-                table.insert(log_list, 'process property2.property3 ' .. value)
-            end))
+        local execution = responsive.execution.create_sequence_execution(execution_list)
 
-        execution_plan:execute()
-        execution_plan:clear_dirty()
-        assert(#log_list == 3)
-        execution_plan:execute()
-        execution_plan:clear_dirty()
-        assert(#log_list == 3)
+        execution:process()
+        assert(#log_list == 2)
+        execution:process()
+        assert(#log_list == 2)
         data.property1 = 'test1_changed'
         data.property2.property3 = 'test3_changed'
-        execution_plan:execute()
-        execution_plan:clear_dirty()
-        assert(#log_list == 6)
-        execution_plan:execute()
-        execution_plan:clear_dirty()
-        assert(#log_list == 6)
+        execution:process()
+        assert(#log_list == 4)
+        execution:process()
+        assert(#log_list == 4)
         assert(log_list[1] == 'process property1 test1')
-        assert(log_list[2] == 'process property1 test1')
-        assert(log_list[3] == 'process property2.property3 test3')
-        assert(log_list[4] == 'process property1 test1_changed')
-        assert(log_list[5] == 'process property1 test1_changed')
-        assert(log_list[6] == 'process property2.property3 test3_changed')
+        assert(log_list[2] == 'process property2.property3 test3')
+        assert(log_list[3] == 'process property1 test1_changed')
+        assert(log_list[4] == 'process property2.property3 test3_changed')
     end)
 
     it('execution_plan bidirection binding', function()
@@ -273,7 +261,6 @@ describe('responsive', function()
         local responsive = require('lib.responsive')
 
         helper.set_global({})
-        local execution_plan = responsive.create_execution_plan()
         local data = responsive.create_reactive_table({
             property1 = 'test1',
             property2 = {
@@ -281,20 +268,19 @@ describe('responsive', function()
             }
         })
         local log_list = {}
-        local execution = responsive.create_visual_execution(data, "property2.property3",
-            responsive.BINDING_MODE.PULL_AND_PUSH, function(value)
-                table.insert(log_list, 'process property2.property3 ' .. value)
-            end)
+        local execution_list = {}
+        local binding = responsive.create_binding(data, "property2.property3", responsive.BINDING_MODE.PULL_AND_PUSH)
+        table.insert(execution_list, responsive.execution.create_execution_for_binding(binding, function(value)
+            table.insert(log_list, 'process property2.property3 ' .. value)
+        end))
 
-        execution_plan:append(execution)
+        local execution = responsive.execution.create_sequence_execution(execution_list)
 
-        execution_plan:execute()
-        execution_plan:clear_dirty()
+        execution:process()
         assert(#log_list == 1)
         ---@diagnostic disable-next-line: need-check-nil
-        execution.tag.binding:set('test3_changed')
-        execution_plan:execute()
-        execution_plan:clear_dirty()
+        binding:set('test3_changed')
+        execution:process()
         assert(#log_list == 1)
         assert(data.property2.property3 == 'test3_changed')
     end)

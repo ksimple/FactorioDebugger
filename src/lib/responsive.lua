@@ -108,18 +108,28 @@ M.BINDING_METATABLE = {
     __type = 'kbinding'
 }
 
+M.unwrap_binding_value = function(binding)
+    if getmetatable(binding) == M.BINDING_METATABLE then
+        return binding:get()
+    else
+        return binding
+    end
+end
+
 M.create_binding = function(data, expression, mode)
     mode = mode or M.BINDING_MODE.PULL
 
     local binding = {
         __id = unique_id.generate('bind'),
-        __first = true,
-        __dirty = false,
+        __dirty = true,
         __watch_dispose_list = {},
         set = nil,
         get = nil,
         dirty = function(self)
-            return self.__dirty
+            if self.__dirty then
+                return true
+            end
+            return false
         end,
         set_dirty = function(self)
             self.__dirty = true
@@ -141,7 +151,8 @@ M.create_binding = function(data, expression, mode)
         end
     else
         binding.set = function(self, value)
-            local func = load('local __value = ...; ' .. expression .. ' = __value', nil, "t", data)
+            local func = load('local __value = ...; ' .. expression .. ' = __value', nil, "t",
+                M.unwrap_binding_value(data))
             ---@diagnostic disable-next-line: param-type-mismatch
             local status, result = pcall(func, value)
             binding:clear_dirty()
@@ -172,7 +183,6 @@ M.create_binding = function(data, expression, mode)
         end
         self.__watch_dispose_list = {}
 
-        local func = load('return ' .. expression, nil, "t", data)
         local dispose
 
         if mode ~= M.BINDING_MODE.ONE_TIME then
@@ -189,6 +199,8 @@ M.create_binding = function(data, expression, mode)
                         end))
             end)
         end
+
+        local func = load('return ' .. expression, nil, "t", M.unwrap_binding_value(data))
 
         ---@diagnostic disable-next-line: param-type-mismatch, redefined-local
         local status, value = pcall(func)
@@ -212,12 +224,12 @@ M.create_binding = function(data, expression, mode)
     return binding
 end
 
-M.create_execution = function(process, dirty, clear_dirty, dispose, tag)
+M.execution = {}
+
+M.execution.create_execution = function(process, dirty, dispose, tag)
     local execution = {
         __id = unique_id.generate('execution'),
-        first = true,
         dirty = dirty,
-        clear_dirty = clear_dirty,
         process = process,
         dispose = dispose,
         tag = tag
@@ -226,65 +238,59 @@ M.create_execution = function(process, dirty, clear_dirty, dispose, tag)
     return execution
 end
 
-M.create_visual_execution = function(data, binding_expression, binding_mode, process_value_change)
-    local binding = M.create_binding(data, binding_expression, binding_mode)
-    local dirty = function(self)
-        if getmetatable(data) == M.BINDING_METATABLE then
-            if data:dirty() then
+M.execution.binding_execution = {
+    dirty = function(self)
+        return self.tag.binding:dirty()
+    end,
+    process = function(self)
+        self.tag.process_value_change(M.unwrap_binding_value(self.tag.binding))
+        if getmetatable(self.tag.binding) == M.BINDING_METATABLE then
+            self.tag.binding:clear_dirty()
+        end
+    end,
+    dispose = function(self)
+    end
+}
+
+M.execution.create_execution_for_binding = function(binding, process_value_change)
+    if getmetatable(binding) ~= M.BINDING_METATABLE then
+        error('can only accept binding')
+    end
+    return M.execution.create_execution(M.execution.binding_execution.process, M.execution.binding_execution.dirty,
+        M.execution.binding_execution.dispose, {
+            binding = binding,
+            process_value_change = process_value_change
+        })
+end
+
+M.execution.sequence_execution = {
+    dirty = function(self)
+        for _, execution in ipairs(self.tag.execution_list) do
+            if execution:dirty() then
                 return true
             end
         end
-        if binding:dirty() then
-            return true
-        end
-    end
-    local clear_dirty = function(self)
-        binding:clear_dirty()
-    end
-    local process = function(self)
-        local value = binding:get()
-        process_value_change(value)
-    end
-    local dispose = function(self)
-        binding:dispose()
-    end
-
-    return M.create_execution(process, dirty, clear_dirty, dispose, {
-        binding = binding
-    })
-end
-
-M.create_execution_plan = function()
-    local execution_plan = {
-        __id = unique_id.generate('ep'),
-        __execution_list = {},
-        append = function(self, execution)
-            table.insert(self.__execution_list, execution)
-        end,
-        dirty = function(self)
-            for _, execution in ipairs(self.__execution_list) do
-                if execution:dirty() then
-                    return true
-                end
-            end
-            return false
-        end,
-        execute = function(self)
-            for _, execution in ipairs(self.__execution_list) do
-                if execution.first or execution.dirty() then
-                    execution:process()
-                    execution.first = false
-                end
-            end
-        end,
-        clear_dirty = function(self)
-            for _, execution in ipairs(self.__execution_list) do
-                execution:clear_dirty()
+        return false
+    end,
+    process = function(self)
+        for _, execution in ipairs(self.tag.execution_list) do
+            if execution:dirty() then
+                execution:process()
             end
         end
-    }
+    end,
+    dispose = function(self)
+        for _, execution in ipairs(self.tag.execution_list) do
+            execution:dispose()
+        end
+    end
+}
 
-    return execution_plan
+M.execution.create_sequence_execution = function(execution_list)
+    return M.execution.create_execution(M.execution.sequence_execution.process, M.execution.sequence_execution.dirty,
+        M.execution.sequence_execution.dispose, {
+            execution_list = execution_list
+        })
 end
 
 return M

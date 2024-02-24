@@ -28,8 +28,10 @@ M.build = function(parent)
     local ui_node = {
         element = element,
         update_ui = function(self)
-            self.execution_plan:execute()
-            self.execution_plan:clear_dirty()
+            if self.execution_plan.dirty() then
+                self.execution_plan:execute()
+                self.execution_plan:clear_dirty()
+            end
         end,
         execution_plan = execution_plan,
         data = data
