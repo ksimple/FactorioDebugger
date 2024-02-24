@@ -11,29 +11,41 @@ describe('unique_id', function()
 
         helper.set_global({})
 
-        assert(unique_id.generate(12345678) == 'none_12345678_100000000')
-        assert(unique_id.generate(12345678, 'test') == 'test_12345678_100000001')
+        assert(unique_id.generate() == 'none_100000000_100000000')
+        assert(unique_id.generate('test') == 'test_100000000_100000001')
 
         helper.set_global({
             unique_id = 200000000
         })
 
-        assert(unique_id.generate(12345678) == 'none_12345678_200000000')
-        assert(unique_id.generate(12345678, 'test') == 'test_12345678_200000001')
+        assert(unique_id.generate() == 'none_100000000_200000000')
+        assert(unique_id.generate('test') == 'test_100000000_200000001')
+    end)
+end)
+
+describe('log', function()
+    it('test warn output', function()
+        local helper = require("helper")
+        local log = require('lib.log')
+
+        helper.set_global({})
+        log.in_game = false
+        log.warn('test')
     end)
 end)
 
 describe('responsive', function()
-    it('get and set', function()
+    it('reactive_table get and set', function()
         local helper = require("helper")
         local responsive = require('lib.responsive')
 
         helper.set_global({})
 
-        local reactive_table1 = responsive.create_reactive_table(100000000)
-        local reactive_table2 = responsive.create_reactive_table(100000000)
+        local reactive_table1 = responsive.create_reactive_table({
+            property1 = 'test1'
+        })
+        local reactive_table2 = responsive.create_reactive_table()
 
-        reactive_table1.property1 = 'test1'
         reactive_table2.property1 = 'test2'
 
         assert(reactive_table1.property1 == 'test1')
@@ -42,59 +54,59 @@ describe('responsive', function()
         assert(reactive_table2.__id == 'rt_100000000_100000001')
     end)
 
-    it('add listener', function()
+    it('reactive_table add listener', function()
         local helper = require("helper")
         local responsive = require('lib.responsive')
 
         helper.set_global({})
 
-        local reactive_table1 = responsive.create_reactive_table(100000000)
-        local change_log_list = {}
+        local reactive_table1 = responsive.create_reactive_table()
+        local log_list = {}
 
-        reactive_table1.__add_listener(responsive.EVENT.PROPERTY_READ, function(responsive, name, old_value, new_value)
-            table.insert(change_log_list, 'read_' .. responsive.__id .. '_' .. name)
+        reactive_table1:__add_listener(responsive.EVENT.PROPERTY_READ, function(responsive, name, old_value, new_value)
+            table.insert(log_list, 'read_' .. responsive.__id .. '_' .. name)
         end)
 
-        reactive_table1.__add_listener(responsive.EVENT.PROPERTY_CHANGED,
+        reactive_table1:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
             function(responsive, name, old_value, new_value)
-                table.insert(change_log_list, 'write_' .. responsive.__id .. '_' .. name)
+                table.insert(log_list, 'write_' .. responsive.__id .. '_' .. name)
             end)
 
         reactive_table1.property1 = 'test1'
-        assert(change_log_list[1] == 'write_rt_100000000_100000000_property1')
-        local propert1 = reactive_table1.property1
-        assert(change_log_list[2] == 'read_rt_100000000_100000000_property1')
+        assert(log_list[1] == 'write_rt_100000000_100000000_property1')
+        local property1 = reactive_table1.property1
+        assert(log_list[2] == 'read_rt_100000000_100000000_property1')
     end)
 
-    it('remove listener', function()
+    it('reactive_table remove listener', function()
         local helper = require("helper")
         local responsive = require('lib.responsive')
 
         helper.set_global({})
 
-        local reactive_table1 = responsive.create_reactive_table(100000000)
-        local change_log_list = {}
+        local reactive_table1 = responsive.create_reactive_table()
+        local log_list = {}
 
-        local remove_listener = reactive_table1.__add_listener(responsive.EVENT.PROPERTY_CHANGED,
+        local remove_listener = reactive_table1:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
             function(responsive, name, old_value, new_value)
-                table.insert(change_log_list, responsive.__id .. '_' .. name)
+                table.insert(log_list, responsive.__id .. '_' .. name)
             end)
 
         remove_listener()
 
         reactive_table1.property1 = 'test1'
-        assert(#change_log_list == 0)
+        assert(#log_list == 0)
 
-        reactive_table1.__add_listener(responsive.EVENT.PROPERTY_CHANGED,
+        reactive_table1:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
             function(responsive, name, old_value, new_value)
-                table.insert(change_log_list, responsive.__id .. '_' .. name)
+                table.insert(log_list, responsive.__id .. '_' .. name)
             end)
 
         reactive_table1.property1 = 'test2'
-        assert(change_log_list[1] == 'rt_100000000_100000000_property1')
+        assert(log_list[1] == 'rt_100000000_100000000_property1')
     end)
 
-    it('bind pull', function()
+    it('binding check type', function()
         local helper = require("helper")
         local responsive = require('lib.responsive')
 
@@ -103,12 +115,12 @@ describe('responsive', function()
         local raw_table = {
             property1 = 'test1'
         }
-        local bind1 = responsive.create_bind(100000000, raw_table, 'property1', responsive.BIND_DIRECTION.PULL)
+        local binding1 = responsive.create_binding(raw_table, 'property1', responsive.BINDING_MODE.PULL)
 
-        assert(bind1.get() == 'test1')
+        assert(getmetatable(binding1) == responsive.BINDING_METATABLE)
     end)
 
-    it('bind pull with error', function()
+    it('binding pull', function()
         local helper = require("helper")
         local responsive = require('lib.responsive')
 
@@ -117,14 +129,28 @@ describe('responsive', function()
         local raw_table = {
             property1 = 'test1'
         }
-        local bind1 = responsive.create_bind(100000000, raw_table, 'property1/0', responsive.BIND_DIRECTION.PULL)
-        local status, result = pcall(bind1.get)
+        local binding1 = responsive.create_binding(raw_table, 'property1', responsive.BINDING_MODE.PULL)
+
+        assert(binding1:get() == 'test1')
+    end)
+
+    it('binding pull with error', function()
+        local helper = require("helper")
+        local responsive = require('lib.responsive')
+
+        helper.set_global({})
+
+        local raw_table = {
+            property1 = 'test1'
+        }
+        local binding1 = responsive.create_binding(raw_table, 'property1/0', responsive.BINDING_MODE.PULL)
+        local status, result = pcall(binding1.get, binding1)
 
         assert(not status)
         assert(type(result) == 'string')
     end)
 
-    it('bind push', function()
+    it('binding push', function()
         local helper = require("helper")
         local responsive = require('lib.responsive')
 
@@ -133,28 +159,143 @@ describe('responsive', function()
         local raw_table = {
             property1 = 'test1'
         }
-        local bind1 = responsive.create_bind(100000000, raw_table, 'property1', responsive.BIND_DIRECTION.PULL_AND_PUSH)
+        local binding1 = responsive.create_binding(raw_table, 'property1', responsive.BINDING_MODE.PULL_AND_PUSH)
 
-        bind1.set('test2')
+        binding1:set('test2')
         assert(raw_table.property1 == 'test2')
     end)
 
-    it('bind dirty', function()
+    it('binding dirty', function()
         local helper = require("helper")
         local responsive = require('lib.responsive')
 
         helper.set_global({})
 
-        local reactive_table = responsive.create_reactive_table(100000000)
-        local bind1 = responsive.create_bind(100000000, reactive_table, 'property1',
-            responsive.BIND_DIRECTION.PULL_AND_PUSH)
+        local reactive_table = responsive.create_reactive_table()
+        local binding1 = responsive.create_binding(reactive_table, 'property1', responsive.BINDING_MODE.PULL_AND_PUSH)
 
         reactive_table.property1 = 'test1'
-        bind1.get()
-        assert(not bind1.dirty())
-        assert(bind1.get() == 'test1')
-        bind1.set('test2')
-        assert(bind1.dirty())
-        assert(bind1.get() == 'test2')
+        binding1:get()
+        assert(not binding1:dirty())
+        assert(binding1:get() == 'test1')
+        binding1:set('test2')
+        assert(not binding1:dirty())
+        assert(binding1:get() == 'test2')
+    end)
+
+    it('execution_plan one binding', function()
+        local helper = require("helper")
+        local responsive = require('lib.responsive')
+
+        helper.set_global({})
+        local execution_plan = responsive.create_execution_plan()
+        local data = responsive.create_reactive_table({
+            property1 = 'test1',
+            property2 = 'test2'
+        })
+        local log_list = {}
+
+        execution_plan:append(responsive.create_visual_execution(data, "property1", responsive.BINDING_MODE.PULL,
+            function(value)
+                table.insert(log_list, 'process property1 ' .. value)
+            end))
+
+        execution_plan:execute()
+        execution_plan:clear_dirty()
+        assert(#log_list == 1)
+        execution_plan:execute()
+        execution_plan:clear_dirty()
+        assert(#log_list == 1)
+        data.property1 = 'test1_changed'
+        execution_plan:execute()
+        execution_plan:clear_dirty()
+        assert(#log_list == 2)
+        execution_plan:execute()
+        execution_plan:clear_dirty()
+        assert(#log_list == 2)
+        assert(log_list[1] == 'process property1 test1')
+        assert(log_list[2] == 'process property1 test1_changed')
+    end)
+
+    it('execution_plan multiple binding', function()
+        local helper = require("helper")
+        local responsive = require('lib.responsive')
+
+        helper.set_global({})
+        local execution_plan = responsive.create_execution_plan()
+        local data = responsive.create_reactive_table({
+            property1 = 'test1',
+            property2 = {
+                property3 = 'test3'
+            }
+        })
+        local log_list = {}
+
+        execution_plan:append(responsive.create_visual_execution(data, "property1", responsive.BINDING_MODE.PULL,
+            function(value)
+                table.insert(log_list, 'process property1 ' .. value)
+            end))
+
+        execution_plan:append(responsive.create_visual_execution(data, "property1", responsive.BINDING_MODE.PULL,
+            function(value)
+                table.insert(log_list, 'process property1 ' .. value)
+            end))
+
+        execution_plan:append(responsive.create_visual_execution(data, "property2.property3",
+            responsive.BINDING_MODE.PULL, function(value)
+                table.insert(log_list, 'process property2.property3 ' .. value)
+            end))
+
+        execution_plan:execute()
+        execution_plan:clear_dirty()
+        assert(#log_list == 3)
+        execution_plan:execute()
+        execution_plan:clear_dirty()
+        assert(#log_list == 3)
+        data.property1 = 'test1_changed'
+        data.property2.property3 = 'test3_changed'
+        execution_plan:execute()
+        execution_plan:clear_dirty()
+        assert(#log_list == 6)
+        execution_plan:execute()
+        execution_plan:clear_dirty()
+        assert(#log_list == 6)
+        assert(log_list[1] == 'process property1 test1')
+        assert(log_list[2] == 'process property1 test1')
+        assert(log_list[3] == 'process property2.property3 test3')
+        assert(log_list[4] == 'process property1 test1_changed')
+        assert(log_list[5] == 'process property1 test1_changed')
+        assert(log_list[6] == 'process property2.property3 test3_changed')
+    end)
+
+    it('execution_plan bidirection binding', function()
+        local helper = require("helper")
+        local responsive = require('lib.responsive')
+
+        helper.set_global({})
+        local execution_plan = responsive.create_execution_plan()
+        local data = responsive.create_reactive_table({
+            property1 = 'test1',
+            property2 = {
+                property3 = 'test3'
+            }
+        })
+        local log_list = {}
+        local execution = responsive.create_visual_execution(data, "property2.property3",
+            responsive.BINDING_MODE.PULL_AND_PUSH, function(value)
+                table.insert(log_list, 'process property2.property3 ' .. value)
+            end)
+
+        execution_plan:append(execution)
+
+        execution_plan:execute()
+        execution_plan:clear_dirty()
+        assert(#log_list == 1)
+        ---@diagnostic disable-next-line: need-check-nil
+        execution.tag.binding:set('test3_changed')
+        execution_plan:execute()
+        execution_plan:clear_dirty()
+        assert(#log_list == 1)
+        assert(data.property2.property3 == 'test3_changed')
     end)
 end)

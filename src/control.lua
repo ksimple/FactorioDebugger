@@ -1,4 +1,9 @@
 local ui_main_frame = require("ui.main_frame")
+local log = require("lib.log")
+
+log.global_min_level = log.level.debug
+
+log.debug('lua version: ' .. _VERSION)
 
 local function init_player(player)
     game.print("init_player, player_index: " .. player.index)
@@ -13,7 +18,6 @@ local function init_player(player)
 end
 
 local function init()
-    game.print('lua version: ' .. '_VERSION')
     game.print("init")
     for _, player in pairs(game.players) do
         init_player(player)
@@ -21,17 +25,29 @@ local function init()
     game.print(game.table_to_json(global))
 end
 
+local PLAYER_UI = {}
+
+local function update_ui(player_index)
+    for _, ui_node in pairs(PLAYER_UI[player_index]) do
+        ui_node:update_ui()
+    end
+end
+
 local function handle_lua_shortcut(event)
-    game.print('lua version: ' .. _VERSION)
     game.print("handle_lua_shortcut")
     game.print(game.table_to_json(event))
     game.print(game.table_to_json(global))
-    local ui_main = global.player_map[event.player_index].ui.main
-    if ui_main then
-        ui_main.destroy()
+    log.warn('test')
+
+    if not PLAYER_UI[event.player_index] then
+        PLAYER_UI[event.player_index] = {}
     end
-    if not ui_main or not ui_main.valid then
-        global.player_map[event.player_index].ui.main = ui_main_frame.build(game.players[event.player_index].gui.screen)
+    local ui_main = PLAYER_UI[event.player_index] and PLAYER_UI[event.player_index].main
+    if not ui_main then
+        PLAYER_UI[event.player_index].main = ui_main_frame.build(game.players[event.player_index].gui.screen)
+    else
+        ui_main.data.caption = 'test ' .. game.tick
+        update_ui(event.player_index)
     end
 end
 
