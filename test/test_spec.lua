@@ -158,15 +158,13 @@ describe('responsive', function()
             local ref = responsive.ref.create()
             local log_list = {}
 
-            ref:__add_listener(responsive.EVENT.PROPERTY_READ,
-                function(reactive, event, name, old_value, new_value)
-                    table.insert(log_list, event .. ' ' .. name)
-                end)
+            ref:__add_listener(responsive.EVENT.PROPERTY_READ, function(reactive, event, name, old_value, new_value)
+                table.insert(log_list, event .. ' ' .. name)
+            end)
 
-            ref:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
-                function(reactive, event, name, old_value, new_value)
-                    table.insert(log_list, event .. ' ' .. name)
-                end)
+            ref:__add_listener(responsive.EVENT.PROPERTY_CHANGED, function(reactive, event, name, old_value, new_value)
+                table.insert(log_list, event .. ' ' .. name)
+            end)
 
             ref.value = 'test1'
             local value = ref.value
@@ -198,6 +196,120 @@ describe('responsive', function()
                 end)
 
             ref.value = 'test2'
+
+            log:debug(tools.table_to_json(log_list))
+            assert(#log_list == 1)
+            assert(log_list[1] == 'property_changed value')
+        end)
+    end)
+
+    describe('computed', function()
+        it('check type', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local computed = responsive.computed.create(function(self)
+                return 0
+            end)
+
+            assert(getmetatable(computed) == responsive.computed.METATABLE)
+        end)
+        it('get and set', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local value = 'test1'
+            local computed = responsive.computed.create(function(self)
+                return value
+            end, function(self, new_value)
+                value = new_value
+            end)
+
+            assert(computed.value == value)
+
+            computed.value = 'test1_changed'
+
+            assert(computed.value == 'test1_changed')
+
+            value = 'test1_changed_again'
+
+            assert(computed.value == 'test1_changed_again')
+        end)
+        it('get only', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local value = 'test1'
+            local computed = responsive.computed.create(function(self)
+                return value
+            end)
+
+            assert(computed.value == value)
+
+            function get_value()
+                computed.value = 'test1_changed'
+            end
+
+            local status, message = pcall(get_value)
+            assert(not status)
+        end)
+        it('add listener', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local value = 'test1'
+            local computed = responsive.computed.create(function(self)
+                return value
+            end, function(self, new_value)
+                value = new_value
+            end)
+            local log_list = {}
+
+            computed:__add_listener(responsive.EVENT.PROPERTY_READ,
+                function(reactive, event, name, old_value, new_value)
+                    table.insert(log_list, event .. ' ' .. name)
+                end)
+
+            computed:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
+                function(reactive, event, name, old_value, new_value)
+                    table.insert(log_list, event .. ' ' .. name)
+                end)
+
+            computed.value = 'test1_changed'
+            local value_read = computed.value
+
+            log:debug(tools.table_to_json(log_list))
+
+            assert(log_list[1] == 'property_changed value')
+            assert(log_list[2] == 'property_read value')
+        end)
+        it('remove listener', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local value = 'test1'
+            local computed = responsive.computed.create(function(self)
+                return value
+            end, function(self, new_value)
+                value = new_value
+            end)
+            local log_list = {}
+
+            local remove_listener = computed:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
+                function(responsive, event, name, old_value, new_value)
+                    table.insert(log_list, event .. ' ' .. name)
+                end)
+
+            remove_listener()
+
+            computed.value = 'test1_changed'
+
+            computed:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
+                function(responsive, event, name, old_value, new_value)
+                    table.insert(log_list, event .. ' ' .. name)
+                end)
+
+            computed.value = 'test2'
 
             log:debug(tools.table_to_json(log_list))
             assert(#log_list == 1)
@@ -292,6 +404,52 @@ describe('responsive', function()
         end)
     end)
 
+    describe('unref', function()
+        it('literal', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local value
+
+            value = responsive.unref(999)
+            assert(value == 999)
+            value = responsive.unref('abc')
+            assert(value == 'abc')
+
+            local t = {}
+            value = responsive.unref(t)
+            assert(value == t)
+        end)
+        it('ref', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local ref = responsive.ref.create('test1')
+
+            assert(responsive.unref(ref) == 'test1')
+
+            local t = {}
+            ref.value = t
+            assert(responsive.unref(ref) == t)
+        end)
+        it('computed', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local value = 'test1'
+            local computed = responsive.computed.create(function(self)
+                return value
+            end)
+
+            assert(responsive.unref(computed) == 'test1')
+
+            local t = {}
+            ---@diagnostic disable-next-line: cast-local-type
+            value = t
+            assert(responsive.unref(computed) == t)
+        end)
+    end)
+
     describe('watch', function()
         it('check type', function()
             local helper = require('helper')
@@ -309,6 +467,7 @@ describe('responsive', function()
             local reactive = responsive.reactive.create({
                 property1 = 'test1'
             })
+            local ref = responsive.ref.create('test1')
             local log_list = {}
 
             watch:add_listener(responsive.EVENT.PROPERTY_CHANGED, function(sender, event, name, old_value, new_value)
@@ -318,18 +477,22 @@ describe('responsive', function()
             watch:record()
             local property1 = reactive.property1
             property1 = reactive.property1
+            local value = responsive.unref(ref)
+            value = responsive.unref(ref)
             watch:stop()
 
             table.insert(log_list, 'begin')
             reactive.property1 = 'test1_changed'
+            ref.value = 'test1_changed'
 
             log:debug(tools.table_to_json(log_list))
 
             assert(#responsive.responsive_global_notifier.__listener[responsive.EVENT.PROPERTY_READ] == 0)
             assert(#reactive.__notifier.__listener[responsive.EVENT.PROPERTY_CHANGED] == 1)
-            assert(#log_list == 2)
+            assert(#log_list == 3)
             assert(log_list[1] == 'begin')
             assert(log_list[2] == reactive.__id .. ' property_changed property1 test1 test1_changed')
+            assert(log_list[3] == ref.__id .. ' property_changed value test1 test1_changed')
         end)
         it('reset', function()
             local helper = require('helper')

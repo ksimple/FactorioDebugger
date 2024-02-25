@@ -55,7 +55,6 @@ end
 M.responsive_global_notifier = M.notifier.create()
 
 -- #region ref
-
 M.ref = {}
 M.ref.METATABLE = {
     __type = 'kref',
@@ -93,11 +92,56 @@ M.ref.create = function(value)
         __value = value
     })
 end
-
 -- #endregion
 
 -- #region computed
+M.computed = {}
+M.computed.METATABLE = {
+    __type = 'kcomputed',
+    __index = function(self, name)
+        if name:sub(1, 2) == '__' then
+            return rawget(self, name)
+        elseif name == 'value' then
+            self.__notifier:emit(self, M.EVENT.PROPERTY_READ, name)
+            local value = rawget(self, '__get')(self)
+            rawset(self, '__value', value)
+            return value
+        else
+            return nil
+        end
+    end,
+    __newindex = function(self, name, value)
+        if name:sub(1, 2) == '__' then
+            -- 内置属性不允许修改
+            return
+        elseif name == 'value' then
+            local set = rawget(self, '__set')
 
+            if set then
+                local old_value = rawget(self, '__value')
+                set(self, value)
+                self.__notifier:emit(self, M.EVENT.PROPERTY_CHANGED, name, old_value, value)
+            else
+                error('set is not supported')
+            end
+        end
+    end
+}
+M.computed.PROTOTYPE = {}
+setmetatable(M.computed.PROTOTYPE, M.computed.METATABLE)
+
+M.computed.create = function(get, set)
+    return tools.inherit_prototype(M.computed.PROTOTYPE, {
+        __id = unique_id.generate('computed'),
+        __notifier = M.notifier.create(M.responsive_global_notifier),
+        __add_listener = function(self, event, handler)
+            return self.__notifier:add_listener(event, handler)
+        end,
+        __set = set,
+        __get = get,
+        __value = nil
+    })
+end
 -- #endregion
 
 -- #region reactive
@@ -160,6 +204,8 @@ end
 
 M.unref = function(value)
     if getmetatable(value) == M.ref.METATABLE then
+        return value.value
+    elseif getmetatable(value) == M.computed.METATABLE then
         return value.value
     else
         return value
