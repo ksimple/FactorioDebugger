@@ -692,6 +692,70 @@ describe('responsive', function()
     end)
 end)
 describe('ui', function()
+    describe('execution', function()
+        it('one binding', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+            local ui = require('lib.ui')
+
+            local data = responsive.reactive.create({
+                property1 = 'test1',
+                property2 = 'test2'
+            })
+            local log_list = {}
+
+            local binding = responsive.binding.create(data, 'property1', responsive.binding.MODE.PULL)
+            local execution = ui.execution.create_value_execution(binding, function(execution, value)
+                table.insert(log_list, 'process property1 ' .. value)
+            end)
+
+            assert(execution:dirty())
+            execution:process()
+            assert(not execution:dirty())
+            execution:process()
+            assert(not execution:dirty())
+
+            data.property1 = 'test1_changed'
+            assert(execution:dirty())
+            execution:process()
+            assert(not execution:dirty())
+            execution:process()
+            assert(not execution:dirty())
+
+            log:debug(tools.table_to_json(log_list))
+            assert(#log_list == 2)
+            assert(log_list[1] == 'process property1 test1')
+            assert(log_list[2] == 'process property1 test1_changed')
+        end)
+        it('bidirection binding', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+            local ui = require('lib.ui')
+
+            local data = responsive.reactive.create({
+                property1 = 'test1',
+                property2 = {
+                    property3 = 'test3'
+                }
+            })
+            local log_list = {}
+            local binding = responsive.binding
+                                .create(data, 'property2.property3', responsive.binding.MODE.PULL_AND_PUSH)
+            local execution = ui.execution.create_value_execution(binding, function(execution, value)
+                table.insert(log_list, 'process property2.property3 ' .. value)
+            end)
+
+            execution:process()
+            assert(#log_list == 1)
+
+            ---@diagnostic disable-next-line: need-check-nil
+            binding:set('test3_changed')
+            execution:process()
+            assert(#log_list == 1)
+            assert(data.property2.property3 == 'test3_changed')
+        end)
+    end)
+
     describe('vnode', function()
         it('check type', function()
             local helper = require('helper')

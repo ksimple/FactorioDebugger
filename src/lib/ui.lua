@@ -108,10 +108,14 @@ M.execution.value_execution = {
     end,
     process = function(self)
         if getmetatable(self.tag.value) == responsive.binding.METATABLE then
-            self.tag.process_value_change(self, self.tag.value:get())
-            self.tag.value:set_dirty(false)
-        elseif self.tag.is_first then
-            self.tag.process_value_change(self, self.tag.value)
+            if self.tag.value:dirty() then
+                self.tag.process_value_change(self, self.tag.value:get())
+                self.tag.value:set_dirty(false)
+            end
+        else
+            if self.tag.is_first then
+                self.tag.process_value_change(self, self.tag.value)
+            end
         end
         self.tag.is_first = false
     end,
@@ -231,6 +235,8 @@ M.vnode.PROTOTYPE = {
 
         rawset(self, '__property_execution_list', property_execution_list)
         self.__style:__setup()
+        -- TODO: 需要处理一下子元素
+
         rawset(self, '__stage', M.vnode.STAGE.UPDATE)
     end
 }
