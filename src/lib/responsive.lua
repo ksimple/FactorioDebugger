@@ -1,24 +1,8 @@
 local unique_id = require('lib.unique_id')
-local log = require('lib.log')
+local log = require('lib.log').get_log('lib.responsive')
+local tools = require('lib.tools')
 local M = {}
 
-local function inherit_prototype(source, target)
-    target = target or {}
-
-    for k, v in pairs(source) do
-        if target[k] == nil then
-            target[k] = v
-        end
-    end
-
-    if getmetatable(source) then
-        setmetatable(target, getmetatable(source))
-    end
-
-    return target
-end
-
-M.EVNET_LISTENER_MAP = {}
 M.EVENT = {
     PROPERTY_READ = 'property_read',
     PROPERTY_CHANGED = 'property_changed'
@@ -60,7 +44,7 @@ M.notifier.create = function(parent)
         error('parent must be a notifier')
     end
 
-    return inherit_prototype(M.notifier.PROTOTYPE, {
+    return tools.inherit_prototype(M.notifier.PROTOTYPE, {
         __id = unique_id.generate('notifier'),
         __listener = {},
         __parent = parent
@@ -68,61 +52,119 @@ M.notifier.create = function(parent)
 end
 -- #endregion
 
--- #region reactive
-M.reactive = {}
-M.reactive_global_notifier = M.notifier.create()
-M.reactive.METATABLE = {
-    __type = 'kreactive',
-    __index = function(reactive, name)
+M.responsive_global_notifier = M.notifier.create()
+
+-- #region ref
+
+M.ref = {}
+M.ref.METATABLE = {
+    __type = 'kref',
+    __index = function(self, name)
         if name:sub(1, 2) == '__' then
-            return rawget(reactive, name)
+            return rawget(self, name)
+        elseif name == 'value' then
+            self.__notifier:emit(self, M.EVENT.PROPERTY_READ, name)
+            return rawget(self, '__value')
         else
-            reactive.__notifier:emit(reactive, M.EVENT.PROPERTY_READ, name)
-            return rawget(reactive.__property_table, name)
+            return nil
         end
     end,
-    __newindex = function(reactive, name, value)
+    __newindex = function(self, name, value)
+        if name:sub(1, 2) == '__' then
+            -- 内置属性不允许修改
+            return
+        elseif name == 'value' then
+            local old_value = rawget(self, '__value')
+            rawset(self, '__value', value)
+            self.__notifier:emit(self, M.EVENT.PROPERTY_CHANGED, name, old_value, value)
+        end
+    end
+}
+M.ref.PROTOTYPE = {}
+setmetatable(M.ref.PROTOTYPE, M.ref.METATABLE)
+
+M.ref.create = function(value)
+    return tools.inherit_prototype(M.ref.PROTOTYPE, {
+        __id = unique_id.generate('ref'),
+        __notifier = M.notifier.create(M.responsive_global_notifier),
+        __add_listener = function(self, event, handler)
+            return self.__notifier:add_listener(event, handler)
+        end,
+        __value = value
+    })
+end
+
+-- #endregion
+
+-- #region computed
+
+-- #endregion
+
+-- #region reactive
+M.reactive = {}
+M.reactive.METATABLE = {
+    __type = 'kreactive',
+    __index = function(self, name)
+        if name:sub(1, 2) == '__' then
+            return rawget(self, name)
+        else
+            self.__notifier:emit(self, M.EVENT.PROPERTY_READ, name)
+            return rawget(self.__raw_table, name)
+        end
+    end,
+    __newindex = function(self, name, value)
         -- TODO: 如果新的值是一个 table，是否需要转换成一个 reactive
         if name:sub(1, 2) == '__' then
             -- 内置属性不允许修改
             return
         else
-            local old_value = rawget(reactive.__property_table, name)
-            rawset(reactive.__property_table, name, value)
-            reactive.__notifier:emit(reactive, M.EVENT.PROPERTY_CHANGED, name, old_value, value)
+            local old_value = rawget(self.__raw_table, name)
+            rawset(self.__raw_table, name, value)
+            self.__notifier:emit(self, M.EVENT.PROPERTY_CHANGED, name, old_value, value)
         end
     end
 }
 M.reactive.PROTOTYPE = {}
 setmetatable(M.reactive.PROTOTYPE, M.reactive.METATABLE)
 
-M.reactive.create = function(property_table)
-    if property_table then
-        local new_property_table = {}
+M.reactive.create = function(raw_table)
+    if raw_table and type(raw_table) ~= 'table' then
+        error('can only accept table')
+    end
+    if raw_table then
+        local new_raw_table = {}
 
-        for key, value in pairs(property_table) do
+        for key, value in pairs(raw_table) do
             if type(value) == 'table' then
-                new_property_table[key] = M.reactive.create(value)
+                new_raw_table[key] = M.reactive.create(value)
             else
-                new_property_table[key] = value
+                new_raw_table[key] = value
             end
         end
 
-        property_table = new_property_table
+        raw_table = new_raw_table
     else
-        property_table = {}
+        raw_table = {}
     end
 
-    return inherit_prototype(M.reactive.PROTOTYPE, {
+    return tools.inherit_prototype(M.reactive.PROTOTYPE, {
         __id = unique_id.generate('reactive'),
-        __notifier = M.notifier.create(M.reactive_global_notifier),
+        __notifier = M.notifier.create(M.responsive_global_notifier),
         __add_listener = function(self, event, handler)
             return self.__notifier:add_listener(event, handler)
         end,
-        __property_table = property_table
+        __raw_table = raw_table
     })
 end
 -- #endregion
+
+M.unref = function(value)
+    if getmetatable(value) == M.ref.METATABLE then
+        return value.value
+    else
+        return value
+    end
+end
 
 -- #region watch
 M.watch = {}
@@ -135,7 +177,7 @@ M.watch.PROTOTYPE = {
         self:reset()
 
         -- 监控所有被读取的属性
-        self.__global_event_listener_dispose = M.reactive_global_notifier:add_listener(M.EVENT.PROPERTY_READ,
+        self.__global_event_listener_dispose = M.responsive_global_notifier:add_listener(M.EVENT.PROPERTY_READ,
             function(reactive, _, get_name)
                 if not self.__recorded_reactive_property[reactive.__id] then
                     self.__recorded_reactive_property[reactive.__id] = {}
@@ -178,7 +220,7 @@ M.watch.PROTOTYPE = {
 setmetatable(M.watch.PROTOTYPE, M.watch.METATABLE)
 
 M.watch.create = function()
-    return inherit_prototype(M.watch.PROTOTYPE, {
+    return tools.inherit_prototype(M.watch.PROTOTYPE, {
         __id = unique_id.generate('watch'),
         __notifier = M.notifier.create()
     })
@@ -232,7 +274,7 @@ M.binding.PROTOTYPE = {
             self.__watch:record()
         end
 
-        local func = load('return ' .. self.__expression, nil, 't', self.__data)
+        local func = load('return ' .. self.__expression, nil, 't', M.unref(self.__data))
 
         ---@diagnostic disable-next-line: param-type-mismatch, redefined-local
         local status, value = pcall(func)
@@ -269,18 +311,10 @@ M.binding.MODE = {
     ONE_TIME = 'one_time'
 }
 
-M.binding.unwrap = function(value)
-    if getmetatable(value) == M.binding.METATABLE then
-        return value:get()
-    else
-        return value
-    end
-end
-
 M.binding.create = function(data, expression, mode)
     mode = mode or M.binding.MODE.PULL
 
-    return inherit_prototype(M.binding.PROTOTYPE, {
+    return tools.inherit_prototype(M.binding.PROTOTYPE, {
         __id = unique_id.generate('binding'),
         __data = data,
         __expression = expression,
@@ -363,6 +397,7 @@ M.execution.sequence_execution = {
         for _, execution in ipairs(self.tag.execution_list) do
             execution:dispose()
         end
+        self.tag.execution_list = {}
     end
 }
 

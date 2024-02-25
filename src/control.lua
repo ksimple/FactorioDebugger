@@ -3,7 +3,7 @@ local log = require('lib.log')
 
 log.global_min_level = log.level.debug
 
-log.debug('lua version: ' .. _VERSION)
+log:debug('lua version: ' .. _VERSION)
 
 local function init_player(player)
     game.print('init_player, player_index: ' .. player.index)
@@ -37,7 +37,7 @@ local function handle_lua_shortcut(event)
     game.print('handle_lua_shortcut')
     game.print(game.table_to_json(event))
     game.print(game.table_to_json(global))
-    log.warn('test')
+    log:warn('test')
 
     if not PLAYER_UI[event.player_index] then
         PLAYER_UI[event.player_index] = {}

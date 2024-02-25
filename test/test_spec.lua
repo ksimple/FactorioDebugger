@@ -5,28 +5,12 @@ local parent_dir = current_file_path:match('(.*' .. path_separator .. ').*' .. p
 
 package.path = package.path .. ';' .. parent_dir .. 'src/?.lua' .. ';' .. parent_dir .. 'test/?.lua'
 
-local cjson = require('cjson')
 local log = require('lib.log')
+local tools = require('lib.tools')
+
 log.in_game = false
 log.global_min_level = log.level.debug
-
-local function remove_function(t)
-    local result = {}
-    for k, v in pairs(t) do
-        if type(v) ~= 'function' then
-            if type(v) == 'table' then
-                result[k] = remove_function(v)
-            else
-                result[k] = v
-            end
-        end
-    end
-    return result
-end
-
-local function table_to_json(t)
-    return cjson.encode(remove_function(t))
-end
+log = log.get_log('test')
 
 describe('unique_id', function()
     it('call generate', function()
@@ -48,10 +32,12 @@ end)
 describe('log', function()
     it('test warn output', function()
         local helper = require('helper')
-        local log = require('lib.log')
+        local log = require('lib.log').get_log('testmodule')
 
-        log.in_game = false
-        log.warn('test')
+        log:warn('test')
+
+        log = require('lib.log').get_log('01234567890123456789.testmodule')
+        log:error('test long module')
     end)
 end)
 
@@ -65,7 +51,6 @@ describe('responsive', function()
 
             assert(getmetatable(notifier) == responsive.notifier.METATABLE)
         end)
-
         it('add listener', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
@@ -89,7 +74,6 @@ describe('responsive', function()
             assert(log_list[1] == "read sender read message")
             assert(log_list[2] == "write sender write message")
         end)
-
         it('dispose', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
@@ -122,7 +106,6 @@ describe('responsive', function()
             assert(log_list[4] == "read sender read message")
             assert(log_list[5] == "write sender write message")
         end)
-
         it('parent', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
@@ -144,6 +127,81 @@ describe('responsive', function()
             assert(#log_list == 2)
             assert(log_list[1] == "read sender read message")
             assert(log_list[2] == "write sender write message")
+        end)
+    end)
+
+    describe('ref', function()
+        it('check type', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local ref = responsive.ref.create('test1')
+
+            assert(getmetatable(ref) == responsive.ref.METATABLE)
+        end)
+        it('get and set', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local ref1 = responsive.ref.create('test1')
+            local ref2 = responsive.ref.create()
+
+            ref2.value = 'test2'
+
+            assert(ref1.value == 'test1')
+            assert(ref2.value == 'test2')
+        end)
+        it('add listener', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local ref = responsive.ref.create()
+            local log_list = {}
+
+            ref:__add_listener(responsive.EVENT.PROPERTY_READ,
+                function(reactive, event, name, old_value, new_value)
+                    table.insert(log_list, event .. ' ' .. name)
+                end)
+
+            ref:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
+                function(reactive, event, name, old_value, new_value)
+                    table.insert(log_list, event .. ' ' .. name)
+                end)
+
+            ref.value = 'test1'
+            local value = ref.value
+
+            log:debug(tools.table_to_json(log_list))
+
+            assert(log_list[1] == 'property_changed value')
+            assert(log_list[2] == 'property_read value')
+        end)
+        it('remove listener', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local ref = responsive.ref.create()
+            local log_list = {}
+
+            local remove_listener = ref:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
+                function(responsive, event, name, old_value, new_value)
+                    table.insert(log_list, event .. ' ' .. name)
+                end)
+
+            remove_listener()
+
+            ref.value = 'test1'
+
+            ref:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
+                function(responsive, event, name, old_value, new_value)
+                    table.insert(log_list, event .. ' ' .. name)
+                end)
+
+            ref.value = 'test2'
+
+            log:debug(tools.table_to_json(log_list))
+            assert(#log_list == 1)
+            assert(log_list[1] == 'property_changed value')
         end)
     end)
 
@@ -172,7 +230,14 @@ describe('responsive', function()
             assert(reactive1.property1 == 'test1')
             assert(reactive2.property1 == 'test2')
         end)
+        it('create with bad type', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
 
+            local status, message = pcall(responsive.reactive.create, 'test')
+
+            assert(not status)
+        end)
         it('add listener', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
@@ -193,12 +258,11 @@ describe('responsive', function()
             reactive.property1 = 'test1'
             local property1 = reactive.property1
 
-            log.debug(table_to_json(log_list))
+            log:debug(tools.table_to_json(log_list))
 
             assert(log_list[1] == 'property_changed property1')
             assert(log_list[2] == 'property_read property1')
         end)
-
         it('remove listener', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
@@ -222,7 +286,7 @@ describe('responsive', function()
 
             reactive1.property1 = 'test2'
 
-            log.debug(table_to_json(log_list))
+            log:debug(tools.table_to_json(log_list))
             assert(#log_list == 1)
             assert(log_list[1] == 'property_changed property1')
         end)
@@ -237,7 +301,6 @@ describe('responsive', function()
 
             assert(getmetatable(watch) == responsive.watch.METATABLE)
         end)
-
         it('record', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
@@ -260,15 +323,14 @@ describe('responsive', function()
             table.insert(log_list, 'begin')
             reactive.property1 = 'test1_changed'
 
-            log.debug(table_to_json(log_list))
+            log:debug(tools.table_to_json(log_list))
 
-            assert(#responsive.reactive_global_notifier.__listener[responsive.EVENT.PROPERTY_READ] == 0)
+            assert(#responsive.responsive_global_notifier.__listener[responsive.EVENT.PROPERTY_READ] == 0)
             assert(#reactive.__notifier.__listener[responsive.EVENT.PROPERTY_CHANGED] == 1)
             assert(#log_list == 2)
             assert(log_list[1] == 'begin')
             assert(log_list[2] == reactive.__id .. ' property_changed property1 test1 test1_changed')
         end)
-
         it('reset', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
@@ -289,7 +351,7 @@ describe('responsive', function()
             watch:reset()
 
             reactive.property1 = 'test1_changed'
-            log.debug(table_to_json(log_list))
+            log:debug(tools.table_to_json(log_list))
 
             assert(#reactive.__notifier.__listener[responsive.EVENT.PROPERTY_CHANGED] == 0)
             assert(#log_list == 0)
@@ -308,7 +370,6 @@ describe('responsive', function()
 
             assert(getmetatable(binding) == responsive.binding.METATABLE)
         end)
-
         it('pull', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
@@ -320,7 +381,6 @@ describe('responsive', function()
 
             assert(binding1:get() == 'test1')
         end)
-
         it('pull with error', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
@@ -334,7 +394,6 @@ describe('responsive', function()
             assert(not status)
             assert(type(result) == 'string')
         end)
-
         it('push', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
@@ -347,7 +406,6 @@ describe('responsive', function()
             binding1:set('test2')
             assert(raw_table.property1 == 'test2')
         end)
-
         it('dirty', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
@@ -390,12 +448,11 @@ describe('responsive', function()
             data.property1 = 'test1_changed'
             execution:process()
             execution:process()
-            log.debug(table_to_json(log_list))
+            log:debug(tools.table_to_json(log_list))
             assert(#log_list == 2)
             assert(log_list[1] == 'process property1 test1')
             assert(log_list[2] == 'process property1 test1_changed')
         end)
-
         it('multiple binding', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
@@ -436,7 +493,6 @@ describe('responsive', function()
             assert(log_list[3] == 'process property1 test1_changed')
             assert(log_list[4] == 'process property2.property3 test3_changed')
         end)
-
         it('bidirection binding', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
