@@ -754,6 +754,9 @@ describe('ui', function()
             assert(#log_list == 1)
             assert(data.property2.property3 == 'test3_changed')
         end)
+        it('dispose', function()
+            -- TODO: 添加逻辑
+        end)
     end)
 
     describe('vnode', function()
@@ -820,8 +823,10 @@ describe('ui', function()
             assert(element.caption == 'test1_changed')
         end)
         it('push binding', function()
+            -- TODO: 添加逻辑
         end)
         it('dispose', function()
+            -- TODO: 添加逻辑
         end)
     end)
     describe('vstyle', function()

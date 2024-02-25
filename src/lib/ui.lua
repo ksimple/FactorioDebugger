@@ -107,15 +107,14 @@ M.execution.value_execution = {
         end
     end,
     process = function(self)
+        if not self:dirty() then
+            return
+        end
         if getmetatable(self.tag.value) == responsive.binding.METATABLE then
-            if self.tag.value:dirty() then
-                self.tag.process_value_change(self, self.tag.value:get())
-                self.tag.value:set_dirty(false)
-            end
+            self.tag.process_value_change(self, self.tag.value:get())
+            self.tag.value:set_dirty(false)
         else
-            if self.tag.is_first then
-                self.tag.process_value_change(self, self.tag.value)
-            end
+            self.tag.process_value_change(self, self.tag.value)
         end
         self.tag.is_first = false
     end,
