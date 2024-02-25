@@ -133,6 +133,46 @@ M.execution.create_value_execution = function(value, process_value_change)
             process_value_change = process_value_change
         })
 end
+
+M.execution.children_execution = {
+    dirty = function(self)
+        if self.tag.is_first then
+            return true
+        elseif self.tag.watch:dirty() then
+            -- 这里不再判断列表是否真的有变化，原因是这个脏只是有可能发生了变化，为了尽量减少更新界面而设置的
+            -- 即使多更新了几次也不会对界面真的有什么影响，只是稍微影响性能，而根据绑定做的界面更新操作也不会
+            -- 真的去比较值是否不同，而仅仅是判断依赖值是否有更改，有更改了就开始修改流程
+            return true
+        else
+            return false
+        end
+    end,
+    process = function(self)
+        if not self.tag.is_first and not self.tag.watch:dirty() then
+            return
+        end
+
+        self.tag.watch:record()
+        local new_children_list = self.tag.get_children_list(self)
+        self.tag.watch:stop()
+
+        self.tag.process_children_list(self.tag.children_list, new_children_list)
+        self.tag.children_list = new_children_list
+    end,
+    dispose = function(self)
+    end
+}
+
+M.execution.create_children_execution = function(get_children_list, process_children_list)
+    return M.execution.create(M.execution.children_execution.process, M.execution.children_execution.dirty,
+        M.execution.children_execution.dispose, {
+            get_children_list = get_children_list,
+            process_children_list = process_children_list,
+            is_first = true,
+            watch = responsive.watch.create(),
+            children_list = nil
+        })
+end
 -- #endregion
 
 -- #region vnode
@@ -190,6 +230,8 @@ M.vnode.PROTOTYPE = {
         end
         self.__style:__update_ui()
     end,
+    __get_children = function(self)
+    end,
     __dispose = function(self)
         for _, binding in pairs(self.__binding_list) do
             binding:dispose()
@@ -236,17 +278,22 @@ M.vnode.PROTOTYPE = {
         self.__style:__setup()
         -- TODO: 需要处理一下子元素
 
+        rawset(self, '__children_execution', M.execution.create_children_execution(function()
+        end, function()
+        end))
+
         rawset(self, '__stage', M.vnode.STAGE.UPDATE)
     end
 }
 setmetatable(M.vnode.PROTOTYPE, M.vnode.METATABLE)
 
 M.vnode.create = function(element, parent_vnode, definition)
-    if not element then
+    local template = definition.template
+
+    if not element and template.type ~= 'virtual' then
         error('no element specified')
     end
 
-    local template = definition.template
     local data = definition.data
 
     if not template or not template.type or element.type ~= template.type then
