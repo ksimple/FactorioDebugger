@@ -405,9 +405,9 @@ M.execution.value_execution = {
         self.tag.is_first = false
     end,
     dispose = function(self)
-        if getmetatable(self.tag.value) == M.binding.METATABLE then
-            self.tag.value:dispose()
-        end
+        -- if getmetatable(self.tag.value) == M.binding.METATABLE then
+        --     self.tag.value:dispose()
+        -- end
     end
 }
 

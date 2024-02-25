@@ -9,7 +9,7 @@ local log = require('lib.log')
 local tools = require('lib.tools')
 
 log.in_game = false
-log.global_min_level = log.level.debug
+log.global_min_level = log.LEVEL.TRACE
 log = log.get_log('test')
 
 describe('unique_id', function()
@@ -169,10 +169,15 @@ describe('responsive', function()
             ref.value = 'test1'
             local value = ref.value
 
+            ref.value = 'test1_changed'
+            value = ref.value
+
             log:debug(tools.table_to_json(log_list))
 
             assert(log_list[1] == 'property_changed value')
             assert(log_list[2] == 'property_read value')
+            assert(log_list[3] == 'property_changed value')
+            assert(log_list[4] == 'property_read value')
         end)
         it('remove listener', function()
             local helper = require('helper')
@@ -683,6 +688,133 @@ describe('responsive', function()
             execution:process()
             assert(#log_list == 1)
             assert(data.property2.property3 == 'test3_changed')
+        end)
+    end)
+end)
+describe('ui', function()
+    describe('vnode', function()
+        it('check type', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+
+            local element = helper.create_gui_element('frame')
+            local vnode = ui.vnode.create(element, nil, {
+                template = {
+                    type = 'frame'
+                }
+            })
+
+            assert(getmetatable(vnode) == ui.vnode.METATABLE)
+        end)
+        it('const value', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+
+            local element = helper.create_gui_element('frame')
+            local vnode = ui.vnode.create(element, nil, {
+                template = {
+                    type = 'frame',
+                    caption = 'test'
+                }
+            })
+
+            vnode:__setup()
+            vnode:__update_ui()
+
+            log:debug(element)
+            assert(element.caption == 'test')
+        end)
+        it('pull binding', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+            local responsive = require('lib.responsive')
+
+            local element = helper.create_gui_element('frame')
+            local data = responsive.reactive.create({
+                property1 = 'test1'
+            })
+            local vnode = ui.vnode.create(element, nil, {
+                template = {
+                    type = 'frame',
+                    [':caption'] = 'property1'
+                },
+                data = data
+            })
+
+            vnode:__setup()
+            vnode:__update_ui()
+
+            log:debug(element)
+            assert(element.caption == 'test1')
+
+            data.property1 = 'test1_changed'
+            assert(element.caption == 'test1')
+
+            vnode:__update_ui()
+
+            log:debug(element)
+            assert(element.caption == 'test1_changed')
+        end)
+        it('push binding', function()
+        end)
+        it('dispose', function()
+        end)
+    end)
+    describe('vstyle', function()
+        it('const value', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+
+            local element = helper.create_gui_element('frame')
+            local vnode = ui.vnode.create(element, nil, {
+                template = {
+                    type = 'frame',
+                    style = {
+                        width = 400,
+                        height = 500
+                    }
+                }
+            })
+
+            vnode:__setup()
+            vnode:__update_ui()
+
+            log:debug(element)
+            assert(element.style.width == 400)
+            assert(element.style.height == 500)
+        end)
+        it('pull binding', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+            local responsive = require('lib.responsive')
+
+            local element = helper.create_gui_element('frame')
+            local data = responsive.reactive.create({
+                width = 400
+            })
+            local vnode = ui.vnode.create(element, nil, {
+                template = {
+                    type = 'frame',
+                    style = {
+                        [':width'] = 'width'
+                    }
+                },
+                data = data
+            })
+
+            vnode:__setup()
+            vnode:__update_ui()
+
+            log:debug(element)
+            assert(element.style.width == 400)
+
+            data.width = 500
+            assert(element.style.width == 400)
+
+            vnode:__update_ui()
+
+            log:debug(element)
+            assert(element.style.width == 500)
         end)
     end)
 end)

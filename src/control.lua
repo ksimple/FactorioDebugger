@@ -1,8 +1,8 @@
 local ui_main_frame = require('ui.main_frame')
 local log = require('lib.log')
 
-log.global_min_level = log.level.debug
-
+log.global_min_level = log.LEVEL.DEBUG
+log = log.get_log('control')
 log:debug('lua version: ' .. _VERSION)
 
 local function init_player(player)

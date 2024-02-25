@@ -1,31 +1,31 @@
 local tools = require('lib.tools')
 local M = {}
 
-M.level = {
-    error = 'error',
-    warn = 'warn',
-    info = 'info',
-    debug = 'debug',
-    trace = 'trace'
+M.LEVEL = {
+    ERROR = 'error',
+    WARN = 'warn',
+    INFO = 'info',
+    DEBUG = 'debug',
+    TRACE = 'trace'
 }
 
-M.level_num = {
-    error = 50,
-    warn = 40,
-    info = 30,
-    debug = 20,
-    trace = 10
+M.LEVEL_NUM = {
+    ERROR = 50,
+    WARN = 40,
+    INFO = 30,
+    DEBUG = 20,
+    TRACE = 10
 }
 
-M.global_min_level = M.level.warn
+M.global_min_level = M.LEVEL.WARN
 M.in_game = true
 
 local log_line_cache = {}
 
 M.__log = function(item)
-    local level = item.level or M.level.debug
+    local level = item.level or M.LEVEL.DEBUG
     -- 跳过不满足输出条件的日志
-    if M.level_num[level] < M.level_num[M.global_min_level] then
+    if M.LEVEL_NUM[string.upper(level)] < M.LEVEL_NUM[string.upper(M.global_min_level)] then
         return
     end
 
@@ -91,7 +91,7 @@ M.output.PROTOTYPE = {
             error('use colon to call log method')
         end
         M.__log({
-            level = M.level.error,
+            level = M.LEVEL.ERROR,
             module = self.__module,
             message = message
         })
@@ -101,7 +101,7 @@ M.output.PROTOTYPE = {
             error('use colon to call log method')
         end
         M.__log({
-            level = M.level.warn,
+            level = M.LEVEL.WARN,
             module = self.__module,
             message = message
         })
@@ -111,7 +111,7 @@ M.output.PROTOTYPE = {
             error('use colon to call log method')
         end
         M.__log({
-            level = M.level.info,
+            level = M.LEVEL.INFO,
             module = self.__module,
             message = message
         })
@@ -121,7 +121,7 @@ M.output.PROTOTYPE = {
             error('use colon to call log method')
         end
         M.__log({
-            level = M.level.debug,
+            level = M.LEVEL.DEBUG,
             module = self.__module,
             message = message
         })
@@ -131,7 +131,7 @@ M.output.PROTOTYPE = {
             error('use colon to call log method')
         end
         M.__log({
-            level = M.level.trace,
+            level = M.LEVEL.TRACE,
             module = self.__module,
             message = message
         })
