@@ -284,6 +284,7 @@ M.vnode.PROTOTYPE = {
                 effective_child_vnode_list = self:__get_effective_child_vnode_list()
             }
         end)
+        -- TODO: 思考一下这里的脏标志是否还有一定的作用
         return responsive.binding.create(computed, 'effective_child_vnode_list')
     end,
     __dispose = function(self)
@@ -318,6 +319,7 @@ M.vnode.PROTOTYPE = {
 
                     table.insert(property_execution_list, execution)
                 elseif template[name] then
+                    -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
                     local execution = M.execution.create_value_execution(template[name], function(execution, value)
                         log:trace('设置 ' .. name .. ': ' .. value)
                         self[name] = value
@@ -333,6 +335,7 @@ M.vnode.PROTOTYPE = {
         rawset(self, '__effective_child_vnode_list_execution',
             M.execution
                 .create_value_execution(self:__get_effective_child_vnode_list_binding(), function(execution, value)
+                    -- TODO: 在这里需要根据 id ，创建新元素，删除旧元素，并且调整顺序
             end))
         rawset(self, '__stage', M.vnode.STAGE.MOUNT)
     end,
