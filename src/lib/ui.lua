@@ -180,6 +180,7 @@ M.vnode = {}
 
 M.vnode.STAGE = {
     SETUP = 'setup',
+    MOUNT = 'mount',
     UPDATE = 'update'
 }
 
@@ -229,8 +230,61 @@ M.vnode.PROTOTYPE = {
             end
         end
         self.__style:__update_ui()
+        if self.__effective_child_vnode_list_execution:dirty() then
+            self.__effective_child_vnode_list_execution:process()
+        end
     end,
-    __get_children = function(self)
+    __generate_child_vnode = function(self, child_template, old_vnode_list)
+        if old_vnode_list then
+            return old_vnode_list
+        end
+
+        local func
+        if child_template.data then
+            func = load('return ' .. child_template.data, nil, 't', responsive.unref(self.__data))
+        else
+            func = function()
+                return {}
+            end
+        end
+        return M.vnode.create(self, {
+            template = child_template,
+            data = responsive.computed.create(func)
+        })
+    end,
+    __refresh_child_vnode_list = function(self)
+        local child_vnode_list = {}
+
+        if (self.__template.children) then
+            for index, child in ipairs(self.__template.children) do
+                child_vnode_list[index] = self:__generate_child_vnode(child, self.__child_vnode_list[index])
+            end
+        end
+
+        self.__child_vnode_list = child_vnode_list
+    end,
+    __get_effective_child_vnode_list = function(self)
+        local effective_vnode_list = {}
+
+        for _, child_vnode in ipairs(self.__child_vnode_list) do
+            if child_vnode.type ~= 'virtual' then
+                table.insert(effective_vnode_list, child_vnode)
+            end
+            for _, efffective_child_vnode in ipairs(child_vnode:__get_effective_child_vnode_list()) do
+                table.insert(effective_vnode_list, efffective_child_vnode)
+            end
+        end
+
+        return effective_vnode_list
+    end,
+    __get_effective_child_vnode_list_binding = function(self)
+        local computed = responsive.computed.create(function()
+            self:__refresh_child_vnode_list()
+            return {
+                effective_child_vnode_list = self:__get_effective_child_vnode_list()
+            }
+        end)
+        return responsive.binding.create(computed, 'effective_child_vnode_list')
     end,
     __dispose = function(self)
         for _, binding in pairs(self.__binding_list) do
@@ -252,10 +306,10 @@ M.vnode.PROTOTYPE = {
         local element = self.__element
         local property_execution_list = {}
 
-        element[M.vnode.ELEMENT_KEY] = self
         if self.type == 'frame' then
             for _, name in ipairs({'caption'}) do
                 if template[':' .. name] then
+                    -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
                     local binding = responsive.binding.create(data, template[':' .. name], responsive.binding.MODE.PULL)
                     local execution = M.execution.create_value_execution(binding, function(execution, value)
                         log:trace('设置 ' .. name .. ': ' .. value)
@@ -276,27 +330,32 @@ M.vnode.PROTOTYPE = {
 
         rawset(self, '__property_execution_list', property_execution_list)
         self.__style:__setup()
-        -- TODO: 需要处理一下子元素
+        rawset(self, '__effective_child_vnode_list_execution',
+            M.execution
+                .create_value_execution(self:__get_effective_child_vnode_list_binding(), function(execution, value)
+            end))
+        rawset(self, '__stage', M.vnode.STAGE.MOUNT)
+    end,
+    __mount = function(self, element)
+        if self.__stage ~= M.vnode.STAGE.MOUNT then
+            error('wrong stage, stage: ' .. self.__stage)
+        end
+        if not element then
+            error('element cannot be nil')
+        end
 
-        rawset(self, '__children_execution', M.execution.create_children_execution(function()
-        end, function()
-        end))
-
+        rawset(self, '__element', element)
+        element[M.vnode.ELEMENT_KEY] = self
         rawset(self, '__stage', M.vnode.STAGE.UPDATE)
     end
 }
 setmetatable(M.vnode.PROTOTYPE, M.vnode.METATABLE)
 
-M.vnode.create = function(element, parent_vnode, definition)
+M.vnode.create = function(parent_vnode, definition)
     local template = definition.template
-
-    if not element and template.type ~= 'virtual' then
-        error('no element specified')
-    end
-
     local data = definition.data
 
-    if not template or not template.type or element.type ~= template.type then
+    if not template or not template.type then
         error('incorrect template')
     end
 
@@ -306,12 +365,13 @@ M.vnode.create = function(element, parent_vnode, definition)
         __template = template,
         __data = data,
         __parent_vnode = parent_vnode,
-        __element = element,
+        __element = nil,
         __property_table = {},
         __binding_list = {},
         __binding_set_map = {},
         __dispose_list = {},
-        __property_execution_list = nil
+        __property_execution_list = nil,
+        __child_vnode_list = {}
     })
 
     rawset(vnode, '__style', M.vstyle.create(vnode))

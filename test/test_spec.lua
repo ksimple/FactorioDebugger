@@ -574,7 +574,7 @@ describe('responsive', function()
             binding1:set('test2')
             assert(raw_table.property1 == 'test2')
         end)
-        it('dirty', function()
+        it('reactive dirty', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
 
@@ -590,6 +590,20 @@ describe('responsive', function()
 
             assert(not binding:dirty())
             assert(binding:get() == 'test2')
+        end)
+        it('computed dirty', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local computed = responsive.computed.create(function()
+                return {
+                    value = 'test1'
+                }
+            end)
+            local binding = responsive.binding.create(computed, 'value', responsive.binding.MODE.PULL)
+
+            assert(binding:dirty())
+            assert(binding:get() == 'test1')
         end)
     end)
 
@@ -765,7 +779,7 @@ describe('ui', function()
             local ui = require('lib.ui')
 
             local element = helper.create_gui_element('frame')
-            local vnode = ui.vnode.create(element, nil, {
+            local vnode = ui.vnode.create(nil, {
                 template = {
                     type = 'frame'
                 }
@@ -773,12 +787,14 @@ describe('ui', function()
 
             assert(getmetatable(vnode) == ui.vnode.METATABLE)
         end)
+        -- TODO: virtual 节点不能是根节点
+        -- TODO: virtual 节点不能设置 element
         it('const value', function()
             local helper = require('helper')
             local ui = require('lib.ui')
 
             local element = helper.create_gui_element('frame')
-            local vnode = ui.vnode.create(element, nil, {
+            local vnode = ui.vnode.create(nil, {
                 template = {
                     type = 'frame',
                     caption = 'test'
@@ -786,6 +802,7 @@ describe('ui', function()
             })
 
             vnode:__setup()
+            vnode:__mount(element)
             vnode:__update_ui()
 
             log:debug(element)
@@ -800,7 +817,7 @@ describe('ui', function()
             local data = responsive.reactive.create({
                 property1 = 'test1'
             })
-            local vnode = ui.vnode.create(element, nil, {
+            local vnode = ui.vnode.create(nil, {
                 template = {
                     type = 'frame',
                     [':caption'] = 'property1'
@@ -809,6 +826,7 @@ describe('ui', function()
             })
 
             vnode:__setup()
+            vnode:__mount(element)
             vnode:__update_ui()
 
             log:debug(element)
@@ -825,6 +843,32 @@ describe('ui', function()
         it('push binding', function()
             -- TODO: 添加逻辑
         end)
+        it('initial with children', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+            local responsive = require('lib.responsive')
+
+            local element = helper.create_gui_element('frame')
+            local data = responsive.reactive.create({
+                property1 = 'test1'
+            })
+            local vnode = ui.vnode.create(nil, {
+                template = {
+                    type = 'frame',
+                    [':caption'] = 'property1',
+                    children = {{
+                        type = 'button'
+                    }}
+                },
+                data = data
+            })
+
+            vnode:__setup()
+            vnode:__mount(element)
+            vnode:__update_ui()
+
+            log:debug(vnode)
+        end)
         it('dispose', function()
             -- TODO: 添加逻辑
         end)
@@ -835,7 +879,7 @@ describe('ui', function()
             local ui = require('lib.ui')
 
             local element = helper.create_gui_element('frame')
-            local vnode = ui.vnode.create(element, nil, {
+            local vnode = ui.vnode.create(nil, {
                 template = {
                     type = 'frame',
                     style = {
@@ -846,6 +890,7 @@ describe('ui', function()
             })
 
             vnode:__setup()
+            vnode:__mount(element)
             vnode:__update_ui()
 
             log:debug(element)
@@ -861,7 +906,7 @@ describe('ui', function()
             local data = responsive.reactive.create({
                 width = 400
             })
-            local vnode = ui.vnode.create(element, nil, {
+            local vnode = ui.vnode.create(nil, {
                 template = {
                     type = 'frame',
                     style = {
@@ -872,6 +917,7 @@ describe('ui', function()
             })
 
             vnode:__setup()
+            vnode:__mount(element)
             vnode:__update_ui()
 
             log:debug(element)

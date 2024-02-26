@@ -32,7 +32,11 @@ M.notifier.PROTOTYPE = {
 
         if self.__listener[event] then
             for _, handler in ipairs(self.__listener[event]) do
-                pcall(handler, sender, event, ...)
+                local status, value = pcall(handler, sender, event, ...)
+
+                if not status then
+                    log:warn(value)
+                end
             end
         end
     end
@@ -275,6 +279,7 @@ end
 -- #endregion
 
 -- #region binding
+-- TODO: binding 最后获取值的时候是否应该拆包？
 M.binding = {}
 
 M.binding.METATABLE = {
@@ -288,10 +293,22 @@ M.binding.PROTOTYPE = {
         if self.__mode == M.binding.MODE.PULL or self.__mode == M.binding.MODE.ONE_TIME then
             error('not supported')
         end
-        local func = load('local __value = ...; ' .. self.__expression .. ' = __value', nil, 't', self.__data)
+
+        local unref_data = M.unref(self.__data)
+
+        if type(unref_data) ~= 'table' then
+            error('data can be table only')
+        end
+
+        local func = load('local __value = ...; ' .. self.__expression .. ' = __value', nil, 't', unref_data)
 
         ---@diagnostic disable-next-line: param-type-mismatch
         local status, result = pcall(func, value)
+
+        if not status then
+            log:warn(value)
+        end
+
         self:set_dirty(false)
         self.__value_cache_valid = false
 
@@ -302,7 +319,6 @@ M.binding.PROTOTYPE = {
         end
     end,
     get = function(self)
-        local get = load('return ' .. self.__expression)
         if self.__value_cache_valid then
             return self.__value_cache_value
         end
@@ -320,10 +336,20 @@ M.binding.PROTOTYPE = {
             self.__watch:record()
         end
 
-        local func = load('return ' .. self.__expression, nil, 't', M.unref(self.__data))
+        local unref_data = M.unref(self.__data)
+
+        if type(unref_data) ~= 'table' then
+            self.__watch:stop()
+            error('data can be table only')
+        end
+        local func = load('return ' .. self.__expression, nil, 't', unref_data)
 
         ---@diagnostic disable-next-line: param-type-mismatch, redefined-local
         local status, value = pcall(func)
+
+        if not status then
+            log:warn(value)
+        end
 
         self.__watch:stop()
 
