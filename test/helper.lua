@@ -38,10 +38,27 @@ end
 M.set_global({})
 
 M.create_gui_element = function(type)
-    return {
+    local element = {
         type = type,
-        style = {}
+        style = {},
+        children = {}
     }
+
+    element.add = function(parameters)
+        local e = M.create_gui_element(parameters.type)
+        e.__parent = element
+        table.insert(element.children, e)
+        e.__index = #element.children
+        return e
+    end
+
+    element.destroy = function()
+        if element.__parent then
+            element.__parent.children[element.__index] = nil
+        end
+    end
+
+    return element
 end
 
 return M

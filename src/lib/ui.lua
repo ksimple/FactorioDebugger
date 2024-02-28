@@ -334,8 +334,35 @@ M.vnode.PROTOTYPE = {
         self.__style:__setup()
         rawset(self, '__effective_child_vnode_list_execution',
             M.execution
-                .create_value_execution(self:__get_effective_child_vnode_list_binding(), function(execution, value)
-                    -- TODO: 在这里需要根据 id ，创建新元素，删除旧元素，并且调整顺序
+                .create_value_execution(self:__get_effective_child_vnode_list_binding(), function(execution, vnode_list)
+                -- TODO: 在这里需要根据 id ，创建新元素，删除旧元素，并且调整顺序
+                for _, vnode in ipairs(vnode_list) do
+                    if vnode.__stage == M.vnode.STAGE.SETUP then
+                        vnode:__setup()
+                    end
+                end
+                for _, vnode in ipairs(vnode_list) do
+                    if vnode.__stage == M.vnode.STAGE.MOUNT then
+                        vnode:__mount(self.__element.add({
+                            type = vnode.type
+                        }))
+                    end
+                end
+
+                local vnode_map = {}
+                for _, vnode in ipairs(vnode_list) do
+                    vnode_map[vnode.__id] = true
+                end
+
+                for _, element in ipairs(self.__element.children) do
+                    if not vnode_map[element[M.vnode.ELEMENT_KEY].__id] then
+                        local vnode = element[M.vnode.ELEMENT_KEY]
+
+                        vnode:__unmount()
+                        vnode:__dispose()
+                        element.destroy()
+                    end
+                end
             end))
         rawset(self, '__stage', M.vnode.STAGE.MOUNT)
     end,
@@ -349,6 +376,18 @@ M.vnode.PROTOTYPE = {
 
         rawset(self, '__element', element)
         element[M.vnode.ELEMENT_KEY] = self
+        rawset(self, '__stage', M.vnode.STAGE.UPDATE)
+    end,
+    __unmount = function(self)
+        if self.__stage ~= M.vnode.STAGE.UPDATE then
+            error('wrong stage, stage: ' .. self.__stage)
+        end
+
+        if self.__element then
+            self.__element[M.vnode.ELEMENT_KEY] = nil
+        end
+
+        rawset(self, '__element', nil)
         rawset(self, '__stage', M.vnode.STAGE.UPDATE)
     end
 }
