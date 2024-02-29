@@ -161,7 +161,7 @@ M.reactive.METATABLE = {
         end
     end,
     __newindex = function(self, name, value)
-        -- TODO: 如果新的值是一个 table，是否需要转换成一个 reactive
+        -- TODO[不是问题]: 如果新的值是一个 table，是否需要转换成一个 reactive
         if name:sub(1, 2) == '__' then
             -- 内置属性不允许修改
             return

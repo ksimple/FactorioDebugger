@@ -20,4 +20,16 @@ M.table_to_json = function(t)
     return game.table_to_json(t)
 end
 
+M.table = {}
+M.table.remove = function (t, o)
+    local result = {}
+    for _, item in ipairs(t) do
+        if item ~= o then
+            table.insert(result, item)
+        end
+    end
+
+    return result
+end
+
 return M

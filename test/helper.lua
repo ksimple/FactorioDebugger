@@ -48,13 +48,18 @@ M.create_gui_element = function(type)
         local e = M.create_gui_element(parameters.type)
         e.__parent = element
         table.insert(element.children, e)
-        e.__index = #element.children
         return e
+    end
+
+    element.swap_children = function(index_1, index_2)
+        local child_element = element.children[index_1]
+        element.children[index_1] = element.children[index_2]
+        element.children[index_2] = child_element
     end
 
     element.destroy = function()
         if element.__parent then
-            element.__parent.children[element.__index] = nil
+            element.__parent.children = tools.table.remove(element.__parent.children, element)
         end
     end
 
