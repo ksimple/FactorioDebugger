@@ -285,6 +285,7 @@ describe('responsive', function()
 
             log:debug(tools.table_to_json(log_list))
 
+            assert(#log_list == 2)
             assert(log_list[1] == 'property_changed value')
             assert(log_list[2] == 'property_read value')
         end)
@@ -320,6 +321,57 @@ describe('responsive', function()
             assert(#log_list == 1)
             assert(log_list[1] == 'property_changed value')
         end)
+        it('wrap ref and computed', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local raw_value = 'test'
+            local computed1 = responsive.computed.create(function()
+                return raw_value
+            end, function(self, value)
+                raw_value = value
+            end)
+            local computed2 = responsive.computed.create(function()
+                return computed1
+            end, function(self, value)
+                computed1.value = value
+            end)
+            local ref1 = responsive.ref.create(computed2)
+            local ref2 = responsive.ref.create(ref1)
+
+            assert(ref1.value == 'test')
+            assert(ref2.value == 'test')
+            assert(computed1.value == 'test')
+            assert(computed2.value == 'test')
+
+            ref1.value = 'test_changed1'
+            assert(ref1.value == 'test_changed1')
+            assert(ref2.value == 'test_changed1')
+            assert(computed1.value == 'test_changed1')
+            assert(computed2.value == 'test_changed1')
+            assert(raw_value == 'test_changed1')
+
+            computed2.value = 'test_changed2'
+            assert(ref1.value == 'test_changed2')
+            assert(ref2.value == 'test_changed2')
+            assert(computed1.value == 'test_changed2')
+            assert(computed2.value == 'test_changed2')
+            assert(raw_value == 'test_changed2')
+
+            computed1.value = 'test_changed3'
+            assert(ref1.value == 'test_changed3')
+            assert(ref2.value == 'test_changed3')
+            assert(computed1.value == 'test_changed3')
+            assert(computed2.value == 'test_changed3')
+            assert(raw_value == 'test_changed3')
+
+            raw_value = 'test_changed4'
+            assert(ref1.value == 'test_changed4')
+            assert(ref2.value == 'test_changed4')
+            assert(computed1.value == 'test_changed4')
+            assert(computed2.value == 'test_changed4')
+            assert(raw_value == 'test_changed4')
+        end)
     end)
 
     describe('reactive', function()
@@ -343,6 +395,20 @@ describe('responsive', function()
             local reactive2 = responsive.reactive.create()
 
             reactive2.property1 = 'test2'
+
+            assert(reactive1.property1 == 'test1')
+            assert(reactive2.property1 == 'test2')
+        end)
+        it('ref get and set', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local reactive1 = responsive.reactive.create({
+                property1 = responsive.ref.create('test1')
+            })
+            local reactive2 = responsive.reactive.create()
+
+            reactive2.property1 = responsive.ref.create('test2')
 
             assert(reactive1.property1 == 'test1')
             assert(reactive2.property1 == 'test2')
@@ -477,7 +543,8 @@ describe('responsive', function()
 
             watch:add_listener(responsive.EVENT.PROPERTY_CHANGED, function(sender, event, name, old_value, new_value)
                 table.insert(log_list,
-                    sender.__id .. ' ' .. event .. ' ' .. name .. ' ' .. old_value .. ' ' .. new_value)
+                    sender.__id .. ' ' .. event .. ' ' .. name .. ' ' .. tostring(old_value) .. ' ' ..
+                        tostring(new_value))
             end)
             watch:record()
             local property1 = reactive.property1
@@ -486,7 +553,7 @@ describe('responsive', function()
             value = responsive.unref(ref)
             watch:stop()
 
-            table.insert(log_list, 'begin')
+            assert(#log_list == 0)
             reactive.property1 = 'test1_changed'
             ref.value = 'test1_changed'
 
@@ -494,10 +561,9 @@ describe('responsive', function()
 
             assert(#responsive.responsive_global_notifier.__listener[responsive.EVENT.PROPERTY_READ] == 0)
             assert(#reactive.__notifier.__listener[responsive.EVENT.PROPERTY_CHANGED] == 1)
-            assert(#log_list == 3)
-            assert(log_list[1] == 'begin')
-            assert(log_list[2] == reactive.__id .. ' property_changed property1 test1 test1_changed')
-            assert(log_list[3] == ref.__id .. ' property_changed value test1 test1_changed')
+            assert(#log_list == 2)
+            assert(log_list[1] == reactive.__id .. ' property_changed property1 test1 test1_changed')
+            assert(log_list[2] == ref.__id .. ' property_changed value test1 test1_changed')
         end)
         it('reset', function()
             local helper = require('helper')
@@ -779,7 +845,7 @@ describe('ui', function()
             local ui = require('lib.ui')
 
             local element = helper.create_gui_element('frame')
-            local vnode = ui.vnode.create(nil, {
+            local vnode = ui.vnode.create({
                 template = {
                     type = 'frame'
                 }
@@ -794,7 +860,7 @@ describe('ui', function()
             local ui = require('lib.ui')
 
             local element = helper.create_gui_element('frame')
-            local vnode = ui.vnode.create(nil, {
+            local vnode = ui.vnode.create({
                 template = {
                     type = 'frame',
                     caption = 'test'
@@ -817,7 +883,7 @@ describe('ui', function()
             local data = responsive.reactive.create({
                 property1 = 'test1'
             })
-            local vnode = ui.vnode.create(nil, {
+            local vnode = ui.vnode.create({
                 template = {
                     type = 'frame',
                     [':caption'] = 'property1'
@@ -843,31 +909,171 @@ describe('ui', function()
         it('push binding', function()
             -- TODO: 添加逻辑
         end)
-        it('initial with children', function()
-            local helper = require('helper')
-            local ui = require('lib.ui')
-            local responsive = require('lib.responsive')
+        describe('children', function()
+            it('initial', function()
+                local helper = require('helper')
+                local ui = require('lib.ui')
+                local responsive = require('lib.responsive')
 
-            local element = helper.create_gui_element('frame')
-            local data = responsive.reactive.create({
-                property1 = 'test1'
-            })
-            local vnode = ui.vnode.create(nil, {
-                template = {
-                    type = 'frame',
-                    [':caption'] = 'property1',
-                    children = {{
-                        type = 'button'
-                    }}
-                },
-                data = data
-            })
+                local element = helper.create_gui_element('frame')
+                local data = responsive.reactive.create({
+                    property1 = 'test1',
+                    property2 = {
+                        property3 = 'test3'
+                    }
+                })
+                local child_darta = responsive.reactive.create({
+                    property4 = 'test4'
+                })
+                local vnode = ui.vnode.create({
+                    template = {
+                        type = 'frame',
+                        [':caption'] = 'property1',
+                        children = {{
+                            type = 'button',
+                            [':data'] = 'property2',
+                            [':caption'] = 'property3'
+                        }, {
+                            type = 'checkbox',
+                            data = child_darta,
+                            [':caption'] = 'property4'
+                        }, {
+                            type = 'checkbox',
+                            data = {
+                                property5 = 'test5'
+                            },
+                            [':caption'] = 'property5'
+                        }}
+                    },
+                    data = data
+                })
 
-            vnode:__setup()
-            vnode:__mount(element)
-            vnode:__update_ui()
+                vnode:__setup()
+                vnode:__mount(element)
+                vnode:__update_ui()
 
-            log:debug(vnode)
+                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+                assert(#element.children == 3)
+                assert(#ui.vnode.element_key_to_vnode_map)
+                assert(element.children[1].type == 'button')
+                assert(element.children[1].caption == 'test3')
+                assert(ui.vnode.get_vnode_by_element(element.children[1]) == vnode.__effective_child_vnode_list[1])
+                assert(element.children[1] == vnode.__effective_child_vnode_list[1].__element)
+                assert(element.children[2].type == 'checkbox')
+                assert(element.children[2].caption == 'test4')
+                assert(ui.vnode.get_vnode_by_element(element.children[2]) == vnode.__effective_child_vnode_list[2])
+                assert(element.children[2] == vnode.__effective_child_vnode_list[2].__element)
+                assert(element.children[3].type == 'checkbox')
+                assert(element.children[3].caption == 'test5')
+                assert(ui.vnode.get_vnode_by_element(element.children[3]) == vnode.__effective_child_vnode_list[3])
+                assert(element.children[3] == vnode.__effective_child_vnode_list[3].__element)
+            end)
+            it('initial with ref', function()
+                local helper = require('helper')
+                local ui = require('lib.ui')
+                local responsive = require('lib.responsive')
+
+                local element = helper.create_gui_element('frame')
+                local data = responsive.reactive.create({
+                    property1 = 'test1',
+                    property2 = {
+                        property3 = responsive.ref.create('test3')
+                    }
+                })
+                local child_darta = responsive.reactive.create({
+                    property4 = responsive.ref.create('test4')
+                })
+                log:debug(child_darta.property4.value)
+                local vnode = ui.vnode.create({
+                    template = {
+                        type = 'frame',
+                        [':caption'] = 'property1',
+                        children = {{
+                            type = 'button',
+                            [':data'] = 'property2',
+                            [':caption'] = 'property3'
+                        }, {
+                            type = 'checkbox',
+                            data = child_darta,
+                            [':caption'] = 'property4'
+                        }, {
+                            type = 'checkbox',
+                            data = {
+                                property5 = responsive.ref.create('test5')
+                            },
+                            [':caption'] = 'property5'
+                        }}
+                    },
+                    data = data
+                })
+
+                vnode:__setup()
+                vnode:__mount(element)
+                vnode:__update_ui()
+
+                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+                assert(#element.children == 3)
+                assert(element.children[1].caption == 'test3')
+                assert(element.children[2].caption == 'test4')
+                assert(element.children[3].caption == 'test5')
+            end)
+            it('change property', function()
+                local helper = require('helper')
+                local ui = require('lib.ui')
+                local responsive = require('lib.responsive')
+
+                local element = helper.create_gui_element('frame')
+                local data = responsive.reactive.create({
+                    property1 = 'test1',
+                    property2 = {
+                        property3 = 'test3'
+                    }
+                })
+                local child_darta = responsive.reactive.create({
+                    property4 = 'test4'
+                })
+                local vnode = ui.vnode.create({
+                    template = {
+                        type = 'frame',
+                        [':caption'] = 'property1',
+                        children = {{
+                            type = 'button',
+                            [':data'] = 'property2',
+                            [':caption'] = 'property3'
+                        }, {
+                            type = 'checkbox',
+                            data = child_darta,
+                            [':caption'] = 'property4'
+                        }, {
+                            type = 'checkbox',
+                            data = {
+                                property5 = 'test5'
+                            },
+                            [':caption'] = 'property5'
+                        }}
+                    },
+                    data = data
+                })
+
+                vnode:__setup()
+                vnode:__mount(element)
+                vnode:__update_ui()
+
+                data.property2.property3 = 'test3_changed'
+                child_darta.property4 = 'test4_changed'
+
+                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+                assert(#element.children == 3)
+                assert(element.children[1].caption == 'test3')
+                assert(element.children[2].caption == 'test4')
+                assert(element.children[3].caption == 'test5')
+
+                vnode:__update_ui()
+                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+                assert(element.children[1].caption == 'test3_changed')
+                assert(element.children[2].caption == 'test4_changed')
+                assert(element.children[3].caption == 'test5')
+            end)
         end)
         it('dispose', function()
             -- TODO: 添加逻辑
@@ -879,7 +1085,7 @@ describe('ui', function()
             local ui = require('lib.ui')
 
             local element = helper.create_gui_element('frame')
-            local vnode = ui.vnode.create(nil, {
+            local vnode = ui.vnode.create({
                 template = {
                     type = 'frame',
                     style = {
@@ -906,7 +1112,7 @@ describe('ui', function()
             local data = responsive.reactive.create({
                 width = 400
             })
-            local vnode = ui.vnode.create(nil, {
+            local vnode = ui.vnode.create({
                 template = {
                     type = 'frame',
                     style = {

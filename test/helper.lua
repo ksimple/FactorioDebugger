@@ -1,30 +1,26 @@
 local tools = require('lib.tools')
 local cjson = require('cjson')
+local log = require('lib.log').get_log('helper')
 
-local function remove_function(t, processed)
-    processed = processed or {}
-    local result = {}
-    for k, v in pairs(t) do
-        if type(v) ~= 'function' then
-            if type(v) == 'table' then
-                if not processed[v] then
-                    processed[v] = true
-                    result[k] = remove_function(v, processed)
-                    processed[v] = false
-                else
-                    result[k] = tostring(v)
-                end
-            else
-                result[k] = v
-            end
-        end
+local function prevent_recursive(t, k, v, context)
+    if not context.processed then
+        context.processed = {}
     end
-    return result
+
+    if type(v) == 'table' and not context.processed[v] then
+        context.processed[v] = true
+        return false, v
+    else
+        return false, tostring(v)
+    end
 end
 
----@diagnostic disable-next-line: duplicate-set-field
-tools.table_to_json = function(t)
-    return cjson.encode(remove_function(t))
+local function remove_function(t, k, v, context)
+    if type(v) == 'function' then
+        return false, tostring(v)
+    end
+
+    return prevent_recursive(t, k, v, context)
 end
 
 local M = {}
@@ -37,15 +33,51 @@ end
 
 M.set_global({})
 
-M.create_gui_element = function(type)
+M.clone_table = function(t, process, process_context)
+    local result = {}
+    process_context = process_context or {}
+
+    for k, v in pairs(t) do
+        local ignore = true
+
+        if process then
+            ignore, v = process(t, k, v, process_context)
+        end
+        if not ignore then
+            if type(v) == 'table' then
+                result[k] = M.clone_table(v, process, process_context)
+            else
+                result[k] = v
+            end
+        end
+    end
+    return result
+end
+
+M.drop_vnode_ref = function(t, k, v, context)
+    if k == '__k_vnode' then
+        return true, v
+    end
+
+    return prevent_recursive(t, k, v, context)
+end
+
+local global_element_index = 1
+
+M.create_gui_element = function(type, player_index)
+    player_index = player_index or 1
     local element = {
         type = type,
         style = {},
+        player_index = player_index,
+        index = global_element_index,
         children = {}
     }
 
+    global_element_index = global_element_index + 1
+
     element.add = function(parameters)
-        local e = M.create_gui_element(parameters.type)
+        local e = M.create_gui_element(parameters.type, player_index)
         e.__parent = element
         table.insert(element.children, e)
         return e
@@ -64,6 +96,11 @@ M.create_gui_element = function(type)
     end
 
     return element
+end
+
+---@diagnostic disable-next-line: duplicate-set-field
+tools.table_to_json = function(t)
+    return cjson.encode(M.clone_table(t, remove_function, {}))
 end
 
 return M

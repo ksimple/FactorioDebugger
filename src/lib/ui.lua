@@ -206,8 +206,6 @@ M.vnode.STAGE = {
     UPDATE = 'update'
 }
 
-M.vnode.ELEMENT_KEY = '__k_vnode'
-
 M.vnode.METATABLE = {
     __type = 'kvnode',
     __index = function(vnode, name)
@@ -266,6 +264,19 @@ M.vnode.ELEMENT_PROPERTY_NAME_LIST = {'name', 'caption', 'value', 'visible', 'te
                                       'left_label_caption', 'left_label_tooltip', 'right_label_caption',
                                       'right_label_tooltip'}
 
+M.vnode.element_key_to_vnode_map = {}
+
+M.vnode.get_element_key = function(element)
+    return string.format('%d_%d', element.player_index, element.index)
+
+end
+
+M.vnode.get_vnode_by_element = function(element)
+    local element_key = M.vnode.get_element_key(element)
+
+    return M.vnode.element_key_to_vnode_map[element_key]
+end
+
 M.vnode.PROTOTYPE = {
     __stage = M.vnode.STAGE.SETUP,
     __get_type = function(self)
@@ -281,6 +292,7 @@ M.vnode.PROTOTYPE = {
         self.__property_table[name] = value
     end,
     __update_ui = function(self)
+        log:trace(string.format('call update_ui, vnode: %s', self.__id))
         if self.__stage ~= M.vnode.STAGE.UPDATE then
             error('wrong stage, stage: ' .. self.__stage)
         end
@@ -307,15 +319,22 @@ M.vnode.PROTOTYPE = {
             return old_vnode_list
         end
 
+        -- TODO: 需要支持 v-if
+        -- TODO: 需要支持 v-for
         local func
-        if child_template.data then
-            func = load('return ' .. child_template.data, nil, 't', responsive.unref(self.__data))
+        if child_template[':data'] then
+            func = load('return ' .. child_template[':data'], nil, 't', responsive.unref(self.__data))
+        elseif child_template.data then
+            func = function()
+                return child_template.data
+            end
         else
             func = function()
                 return {}
             end
         end
-        return M.vnode.create(self, {
+        return M.vnode.create({
+            parent = self,
             template = child_template,
             data = responsive.computed.create(func)
         })
@@ -357,6 +376,9 @@ M.vnode.PROTOTYPE = {
         return responsive.binding.create(computed, 'effective_child_vnode_list')
     end,
     __dispose = function(self)
+        if self.__stage == M.vnode.STAGE.UPDATE then
+            self:__unmount()
+        end
         for _, binding in pairs(self.__binding_list) do
             binding:dispose()
         end
@@ -368,6 +390,7 @@ M.vnode.PROTOTYPE = {
         end
     end,
     __setup = function(self)
+        log:trace(string.format('call setup, vnode: %s', self.__id))
         if self.__stage ~= M.vnode.STAGE.SETUP then
             error('wrong stage, stage: ' .. self.__stage)
         end
@@ -416,7 +439,8 @@ M.vnode.PROTOTYPE = {
                 for _, vnode in ipairs(vnode_list) do
                     if vnode.__stage == M.vnode.STAGE.MOUNT then
                         vnode:__mount(self.__element.add({
-                            type = vnode.type
+                            type = vnode.type,
+                            tags = {}
                         }))
                     end
                 end
@@ -427,21 +451,21 @@ M.vnode.PROTOTYPE = {
                 end
 
                 for _, element in ipairs(self.__element.children) do
-                    if not vnode_map[element[M.vnode.ELEMENT_KEY].__id] then
-                        local vnode = element[M.vnode.ELEMENT_KEY]
+                    local vnode = M.vnode.get_vnode_by_element(element)
 
+                    if not vnode_map[vnode.__id] then
                         vnode:__unmount()
                         vnode:__dispose()
                         element.destroy()
                     end
                 end
 
-                -- TODO: 调整顺序
+                -- TODO: 添加测试用例
                 for index = 1, #self.__element.children do
                     local element = self.__element.children[index]
                     local vnode = vnode_list[index]
 
-                    if element[M.vnode.ELEMENT_KEY] ~= vnode then
+                    if M.vnode.get_vnode_by_element(element) ~= vnode then
                         for index2 = index + 1, #self.__element.children do
                             if self.__element.children[index2] == vnode then
                                 self.__element.swap_children(index, index2)
@@ -453,6 +477,7 @@ M.vnode.PROTOTYPE = {
         rawset(self, '__stage', M.vnode.STAGE.MOUNT)
     end,
     __mount = function(self, element)
+        log:trace(string.format('call mount, vnode: %s, element: %d', self.__id, (element or {}).index))
         if self.__stage ~= M.vnode.STAGE.MOUNT then
             error('wrong stage, stage: ' .. self.__stage)
         end
@@ -461,16 +486,17 @@ M.vnode.PROTOTYPE = {
         end
 
         rawset(self, '__element', element)
-        element[M.vnode.ELEMENT_KEY] = self
+        M.vnode.element_key_to_vnode_map[M.vnode.get_element_key(element)] = self
         rawset(self, '__stage', M.vnode.STAGE.UPDATE)
     end,
     __unmount = function(self)
+        log:trace(string.format('call unmount, vnode: %s, element: %d', self.__id, (self.__element or {}).index))
         if self.__stage ~= M.vnode.STAGE.UPDATE then
             error('wrong stage, stage: ' .. self.__stage)
         end
 
         if self.__element then
-            self.__element[M.vnode.ELEMENT_KEY] = nil
+            M.vnode.element_key_to_vnode_map[M.vnode.get_element_key(self.__element)] = nil
         end
 
         rawset(self, '__element', nil)
@@ -479,14 +505,15 @@ M.vnode.PROTOTYPE = {
 }
 setmetatable(M.vnode.PROTOTYPE, M.vnode.METATABLE)
 
-M.vnode.create = function(parent_vnode, definition)
+M.vnode.create = function(definition)
     local template = definition.template
-    local data = definition.data
 
     if not template or not template.type then
         error('incorrect template')
     end
 
+    local data = definition.data
+    local parent_vnode = definition.parent
     local vnode = tools.inherit_prototype(M.vnode.PROTOTYPE, {
         __id = unique_id.generate('vnode'),
         __definition = definition,

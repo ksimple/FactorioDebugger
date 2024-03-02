@@ -58,8 +58,39 @@ end
 
 M.responsive_global_notifier = M.notifier.create()
 
+-- TODO: 把这些函数放到挪到一个命名空间里面去
+M.is_ref = function(t)
+    local metatable = getmetatable(t)
+    return metatable == M.ref.METATABLE or metatable == M.computed.METATABLE
+end
+
+M.unref = function(ref)
+    if M.is_ref(ref) then
+        return ref.value
+    else
+        return ref
+    end
+end
+
+-- TODO: 增加一个设置值的函数
+M.setref = function(ref, value)
+    if M.is_ref(ref) then
+        ref.value = value
+        return ref
+    else
+        return value
+    end
+
+end
+
+M.is_reactive = function(t)
+    local metatable = getmetatable(t)
+    return metatable == M.ref.METATABLE or metatable == M.computed.METATABLE or metatable == M.reactive.METATABLE
+end
+
 -- #region ref
 M.ref = {}
+
 M.ref.METATABLE = {
     __type = 'kref',
     __index = function(self, name)
@@ -67,7 +98,7 @@ M.ref.METATABLE = {
             return rawget(self, name)
         elseif name == 'value' then
             self.__notifier:emit(self, M.EVENT.PROPERTY_READ, name)
-            return rawget(self, '__value')
+            return M.unref(rawget(self, '__value'))
         else
             return nil
         end
@@ -78,12 +109,20 @@ M.ref.METATABLE = {
             return
         elseif name == 'value' then
             local old_value = rawget(self, '__value')
-            rawset(self, '__value', value)
-            self.__notifier:emit(self, M.EVENT.PROPERTY_CHANGED, name, old_value, value)
+            local old_raw_value = M.unref(old_value)
+            local new_raw_value = M.unref(value)
+
+            value = M.setref(old_value, value)
+            if value ~= old_value then
+                rawset(self, '__value', value)
+            end
+            self.__notifier:emit(self, M.EVENT.PROPERTY_CHANGED, name, old_raw_value, new_raw_value)
         end
     end
 }
+
 M.ref.PROTOTYPE = {}
+
 setmetatable(M.ref.PROTOTYPE, M.ref.METATABLE)
 
 M.ref.create = function(value)
@@ -100,6 +139,7 @@ end
 
 -- #region computed
 M.computed = {}
+
 M.computed.METATABLE = {
     __type = 'kcomputed',
     __index = function(self, name)
@@ -107,9 +147,9 @@ M.computed.METATABLE = {
             return rawget(self, name)
         elseif name == 'value' then
             self.__notifier:emit(self, M.EVENT.PROPERTY_READ, name)
-            local value = rawget(self, '__get')(self)
-            rawset(self, '__value', value)
-            return value
+            local raw_value = M.unref(rawget(self, '__get')(self))
+            rawset(self, '__raw_value', raw_value)
+            return raw_value
         else
             return nil
         end
@@ -122,16 +162,19 @@ M.computed.METATABLE = {
             local set = rawget(self, '__set')
 
             if set then
-                local old_value = rawget(self, '__value')
+                local old_raw_value = rawget(self, '__raw_value')
                 set(self, value)
-                self.__notifier:emit(self, M.EVENT.PROPERTY_CHANGED, name, old_value, value)
+                local new_raw_value = M.unref(rawget(self, '__get')(self))
+                self.__notifier:emit(self, M.EVENT.PROPERTY_CHANGED, name, old_raw_value, new_raw_value)
             else
                 error('set is not supported')
             end
         end
     end
 }
+
 M.computed.PROTOTYPE = {}
+
 setmetatable(M.computed.PROTOTYPE, M.computed.METATABLE)
 
 M.computed.create = function(get, set)
@@ -150,6 +193,7 @@ end
 
 -- #region reactive
 M.reactive = {}
+
 M.reactive.METATABLE = {
     __type = 'kreactive',
     __index = function(self, name)
@@ -157,7 +201,9 @@ M.reactive.METATABLE = {
             return rawget(self, name)
         else
             self.__notifier:emit(self, M.EVENT.PROPERTY_READ, name)
-            return rawget(self.__raw_table, name)
+
+            -- TODO: 返回的值是否应该解包，我感觉是应该需要的
+            return M.unref(rawget(self.__raw_table, name))
         end
     end,
     __newindex = function(self, name, value)
@@ -167,23 +213,31 @@ M.reactive.METATABLE = {
             return
         else
             local old_value = rawget(self.__raw_table, name)
-            rawset(self.__raw_table, name, value)
-            self.__notifier:emit(self, M.EVENT.PROPERTY_CHANGED, name, old_value, value)
+            local old_raw_value = M.unref(old_value)
+            local new_raw_value = M.unref(value)
+
+            value = M.setref(old_value, value)
+            if value ~= old_value then
+                rawset(self.__raw_table, name, value)
+            end
+            self.__notifier:emit(self, M.EVENT.PROPERTY_CHANGED, name, old_raw_value, new_raw_value)
         end
     end
 }
+
 M.reactive.PROTOTYPE = {}
+
 setmetatable(M.reactive.PROTOTYPE, M.reactive.METATABLE)
 
 M.reactive.create = function(raw_table)
-    if raw_table and type(raw_table) ~= 'table' then
+    if raw_table and type(raw_table) ~= 'table' and getmetatable(raw_table) ~= nil then
         error('can only accept table')
     end
     if raw_table then
         local new_raw_table = {}
 
         for key, value in pairs(raw_table) do
-            if type(value) == 'table' then
+            if type(value) == 'table' and getmetatable(value) == nil then
                 new_raw_table[key] = M.reactive.create(value)
             else
                 new_raw_table[key] = value
@@ -205,16 +259,6 @@ M.reactive.create = function(raw_table)
     })
 end
 -- #endregion
-
-M.unref = function(value)
-    if getmetatable(value) == M.ref.METATABLE then
-        return value.value
-    elseif getmetatable(value) == M.computed.METATABLE then
-        return value.value
-    else
-        return value
-    end
-end
 
 -- #region watch
 M.watch = {}
@@ -275,7 +319,6 @@ M.watch.create = function()
         __notifier = M.notifier.create()
     })
 end
-
 -- #endregion
 
 -- #region binding
@@ -300,6 +343,7 @@ M.binding.PROTOTYPE = {
             error('data can be table only')
         end
 
+        -- TODO: 这给地方是否需要使用 setref 来设置这个值？
         local func = load('local __value = ...; ' .. self.__expression .. ' = __value', nil, 't', unref_data)
 
         ---@diagnostic disable-next-line: param-type-mismatch
@@ -340,12 +384,12 @@ M.binding.PROTOTYPE = {
 
         if type(unref_data) ~= 'table' then
             self.__watch:stop()
-            error('data can be table only')
+            error(string.format('data can be table only, but %s got', type(unref_data)))
         end
-        local func = load('return ' .. self.__expression, nil, 't', unref_data)
+        local func = load('local unref = ... ; return unref(' .. self.__expression .. ')', nil, 't', unref_data)
 
         ---@diagnostic disable-next-line: param-type-mismatch, redefined-local
-        local status, value = pcall(func)
+        local status, value = pcall(func, M.unref)
 
         if not status then
             log:warn(value)
@@ -398,7 +442,6 @@ end
 -- #endregion
 
 -- #region execution
-
 M.execution = {}
 
 M.execution.create = function(process, dirty, dispose, tag)
@@ -479,7 +522,6 @@ M.execution.create_sequence_execution = function(execution_list)
             execution_list = execution_list
         })
 end
-
 -- #endregion
 
 return M
