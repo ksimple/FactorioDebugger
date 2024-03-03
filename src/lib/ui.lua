@@ -5,8 +5,17 @@ local responsive = require('lib.responsive')
 
 local M = {}
 
+M.process_event = function(event)
+    local vnode = M.vnode.get_vnode_by_element(event.element)
+
+    if vnode then
+        vnode:__process_gui_event(event)
+    end
+end
+
 -- #region vstyle
 M.vstyle = {}
+
 M.vstyle.METATABLE = {
     __type = 'kvstyle',
     __index = function(self, name)
@@ -97,6 +106,7 @@ M.vstyle.PROTOTYPE = {
         end
     end
 }
+
 setmetatable(M.vstyle.PROTOTYPE, M.vstyle.METATABLE)
 
 M.vstyle.create = function(vnode)
@@ -157,46 +167,6 @@ M.execution.create_value_execution = function(value, process_value_change)
             value = value,
             is_first = true,
             process_value_change = process_value_change
-        })
-end
-
-M.execution.children_execution = {
-    dirty = function(self)
-        if self.tag.is_first then
-            return true
-        elseif self.tag.watch:dirty() then
-            -- 这里不再判断列表是否真的有变化，原因是这个脏只是有可能发生了变化，为了尽量减少更新界面而设置的
-            -- 即使多更新了几次也不会对界面真的有什么影响，只是稍微影响性能，而根据绑定做的界面更新操作也不会
-            -- 真的去比较值是否不同，而仅仅是判断依赖值是否有更改，有更改了就开始修改流程
-            return true
-        else
-            return false
-        end
-    end,
-    process = function(self)
-        if not self.tag.is_first and not self.tag.watch:dirty() then
-            return
-        end
-
-        self.tag.watch:record()
-        local new_children_list = self.tag.get_children_list(self)
-        self.tag.watch:stop()
-
-        self.tag.process_children_list(self.tag.children_list, new_children_list)
-        self.tag.children_list = new_children_list
-    end,
-    dispose = function(self)
-    end
-}
-
-M.execution.create_children_execution = function(get_children_list, process_children_list)
-    return M.execution.create(M.execution.children_execution.process, M.execution.children_execution.dirty,
-        M.execution.children_execution.dispose, {
-            get_children_list = get_children_list,
-            process_children_list = process_children_list,
-            is_first = true,
-            watch = responsive.watch.create(),
-            children_list = nil
         })
 end
 -- #endregion
@@ -545,6 +515,10 @@ M.vnode.ELEMENT_PROPERTY_DEFINITION = {
     }
 }
 
+M.vnode.EVENT_MAP = {
+    click = true
+}
+
 M.vnode.element_key_to_vnode_map = {}
 
 M.vnode.get_element_key = function(element)
@@ -558,8 +532,8 @@ M.vnode.get_vnode_by_element = function(element)
     return M.vnode.element_key_to_vnode_map[element_key]
 end
 
--- TODO: 处理事件
 M.vnode.PROTOTYPE = {
+    __disposed = false,
     -- #region special properties processing
     __get_type = function(self)
         return self.__template.type
@@ -574,22 +548,28 @@ M.vnode.PROTOTYPE = {
 
         -- TODO: 需要支持 v-if
         -- TODO: 需要支持 v-for
-        local func
-        if child_template[':data'] then
-            func = load('return ' .. child_template[':data'], nil, 't', responsive.unref(self.__data))
-        elseif child_template.data then
-            func = function()
-                return child_template.data
-            end
-        else
-            func = function()
-                return {}
-            end
-        end
+        -- local func
+        -- if child_template[':data'] then
+        --     func = load('return ' .. child_template[':data'], nil, 't', responsive.unref(self.__data))
+        -- elseif child_template.data then
+        --     func = function()
+        --         return child_template.data
+        --     end
+        -- else
+        --     func = function()
+        --         return {}
+        --     end
+        -- end
+        -- return M.vnode.create({
+        --     parent = self,
+        --     template = child_template,
+        --     data = responsive.computed.create(func)
+        -- })
+
         return M.vnode.create({
             parent = self,
             template = child_template,
-            data = responsive.computed.create(func)
+            data = self.__data
         })
     end,
     __refresh_child_vnode_list = function(self)
@@ -635,7 +615,26 @@ M.vnode.PROTOTYPE = {
             self:__unmount()
         end
         self.__disposer:dispose()
+        self.__disposed = true
     end,
+
+    -- #region event handling
+    __process_gui_event = function(self, event)
+        if event.name == defines.events.on_gui_click then
+            self:__invoke_event_handler('click', event)
+        end
+    end,
+
+    __invoke_event_handler = function(self, name, event)
+        if self.__template['@' .. name] then
+            local func = load('return ' .. self.__template['@' .. name], nil, 't', responsive.unref(self.__data))()
+
+            if func then
+                func(self, name, event)
+            end
+        end
+    end,
+    -- #endregion
 
     -- #region stage processing
     __stage = M.vnode.STAGE.SETUP,
@@ -648,13 +647,14 @@ M.vnode.PROTOTYPE = {
         local template = self.__template
         local element = self.__element
         local property_execution_list = {}
+        local property_binding_map = {}
 
         for name, _ in pairs(template) do
-            if name:sub(1, 1) == ':' then
+            if name:sub(1, 1) == ':' or name:sub(1, 1) == '@' then
                 name = name:sub(2)
             end
-            if not M.vnode.ELEMENT_PROPERTY_DEFINITION[name] and name ~= 'type' and name ~= 'style' and name ~=
-                'children' and name ~= 'data' then
+            if not M.vnode.ELEMENT_PROPERTY_DEFINITION[name] and not M.vnode.EVENT_MAP[name] and name ~= 'type' and name ~=
+                'style' and name ~= 'children' and name ~= 'data' then
                 error('wrong property name in template, name: ' .. name)
             end
         end
@@ -667,32 +667,32 @@ M.vnode.PROTOTYPE = {
                     -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
                     local binding = responsive.binding.create(data, template[':' .. name], responsive.binding.MODE.PULL)
                     local execution = M.execution.create_value_execution(binding, function(execution, value)
-                        log:trace('设置 ' .. name .. ': ')
-                        log:trace(value)
+                        log:trace('设置 ' .. name .. ': ' .. tostring(value))
                         self[name] = value
                     end)
 
                     table.insert(property_execution_list, execution)
+                    property_binding_map[name] = binding
                 elseif template[name] then
                     -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
                     local execution = M.execution.create_value_execution(template[name], function(execution, value)
-                        log:trace('设置 ' .. name .. ': ')
-                        log:trace(value)
+                        log:trace('设置 ' .. name .. ': ' .. tostring(value))
                         self[name] = value
                     end)
 
                     table.insert(property_execution_list, execution)
+                    property_binding_map[name] = binding
                 end
             end
         end
 
         rawset(self, '__property_execution_list', property_execution_list)
+        rawset(self, '__property_binding_map', property_binding_map)
 
         self.__disposer:add(function()
             for _, execution in ipairs(self.__property_execution_list) do
                 execution.dispose()
             end
-            rawset(self, '__property_execution_list', nil)
         end)
 
         self.__style:__setup()

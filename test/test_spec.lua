@@ -110,17 +110,34 @@ describe('responsive', function()
                 table.insert(log_list, 'read' .. ' ' .. sender .. ' ' .. event .. ' ' .. message)
             end)
             notifier:add_listener('write', function(sender, event, message)
-                table.insert(log_list, 'write' .. ' ' .. sender .. ' ' .. event .. ' ' .. message)
+                table.insert(log_list, '1 write' .. ' ' .. sender .. ' ' .. event .. ' ' .. message)
+            end)
+            local dispose2 = notifier:add_listener('write', function(sender, event, message)
+                table.insert(log_list, '2 write' .. ' ' .. sender .. ' ' .. event .. ' ' .. message)
+            end)
+            local dispose3 = notifier:add_listener('write', function(sender, event, message)
+                table.insert(log_list, '3 write' .. ' ' .. sender .. ' ' .. event .. ' ' .. message)
+            end)
+            notifier:add_listener('write', function(sender, event, message)
+                table.insert(log_list, '4 write' .. ' ' .. sender .. ' ' .. event .. ' ' .. message)
+            end)
+            dispose2()
+            dispose3()
+            notifier:add_listener('write', function(sender, event, message)
+                table.insert(log_list, '5 write' .. ' ' .. sender .. ' ' .. event .. ' ' .. message)
             end)
 
             notifier:emit('sender', 'read', 'message')
             notifier:emit('sender', 'write', 'message')
 
-            assert(#notifier.__listener['read'] == 1)
-            assert(#notifier.__listener['write'] == 1)
-            assert(#log_list == 2)
+            log:debug(log_list)
+            assert(notifier:get_listener_count('read') == 1)
+            assert(notifier:get_listener_count('write') == 3)
+            assert(#log_list == 4)
             assert(log_list[1] == "read sender read message")
-            assert(log_list[2] == "write sender write message")
+            assert(log_list[2] == "1 write sender write message")
+            assert(log_list[3] == "4 write sender write message")
+            assert(log_list[4] == "5 write sender write message")
         end)
         it('dispose', function()
             local helper = require('helper')
@@ -145,8 +162,9 @@ describe('responsive', function()
             notifier:emit('sender', 'read', 'message')
             notifier:emit('sender', 'write', 'message')
 
-            assert(#notifier.__listener['read'] == 1)
-            assert(#notifier.__listener['write'] == 1)
+            log:debug(log_list)
+            assert(notifier:get_listener_count('read') == 1)
+            assert(notifier:get_listener_count('write') == 1)
             assert(#log_list == 5)
             assert(log_list[1] == "read sender read message")
             assert(log_list[2] == "read sender read message")
@@ -607,8 +625,8 @@ describe('responsive', function()
 
             log:debug(tools.table_to_json(log_list))
 
-            assert(#responsive.responsive_global_notifier.__listener[responsive.EVENT.PROPERTY_READ] == 0)
-            assert(#reactive.__notifier.__listener[responsive.EVENT.PROPERTY_CHANGED] == 1)
+            assert(responsive.responsive_global_notifier:get_listener_count(responsive.EVENT.PROPERTY_READ) == 0)
+            assert(reactive.__notifier:get_listener_count(responsive.EVENT.PROPERTY_CHANGED) == 1)
             assert(#log_list == 2)
             assert(log_list[1] == reactive.__id .. ' property_changed property1 test1 test1_changed')
             assert(log_list[2] == ref.__id .. ' property_changed value test1 test1_changed')
@@ -635,7 +653,7 @@ describe('responsive', function()
             reactive.property1 = 'test1_changed'
             log:debug(tools.table_to_json(log_list))
 
-            assert(#reactive.__notifier.__listener[responsive.EVENT.PROPERTY_CHANGED] == 0)
+            assert(reactive.__notifier:get_listener_count(responsive.EVENT.PROPERTY_CHANGED) == 0)
             assert(#log_list == 0)
         end)
     end)
@@ -964,13 +982,49 @@ describe('ui', function()
             log:debug(element)
             assert(element.caption == 'test1')
 
-            data.property1 = 'test1_changed'
+            data.property1 = 'test1_changed1'
             assert(element.caption == 'test1')
 
             vnode:__update_ui()
+            assert(element.caption == 'test1_changed1')
+
+            data.property1 = 'test1_changed2'
+            vnode:__update_ui()
+            assert(element.caption == 'test1_changed2')
+
+            data.property1 = 'test1_changed3'
+            vnode:__update_ui()
+            assert(element.caption == 'test1_changed3')
+        end)
+        it('invoke event handler', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+            local responsive = require('lib.responsive')
+
+            local log_list = {}
+            local element = helper.create_gui_element('frame')
+            local data = responsive.reactive.create({
+                property1 = 'test1',
+                onclick1 = function(vnode, name, event)
+                    table.insert(log_list, string.format('%s %s %s', vnode.__id, name, event))
+                end
+            })
+            local vnode = ui.vnode.create({
+                template = {
+                    type = 'frame',
+                    ['@click'] = 'onclick1'
+                },
+                data = data
+            })
+
+            vnode:__setup()
+            vnode:__mount(element)
+            vnode:__update_ui()
 
             log:debug(element)
-            assert(element.caption == 'test1_changed')
+            vnode:__invoke_event_handler('click', 'event')
+            assert(#log_list == 1)
+            assert(log_list[1] == vnode.__id .. ' click event')
         end)
         it('push binding', function()
             -- TODO: 添加逻辑
@@ -988,27 +1042,16 @@ describe('ui', function()
                         property3 = 'test3'
                     }
                 })
-                local child_darta = responsive.reactive.create({
-                    property4 = 'test4'
-                })
                 local vnode = ui.vnode.create({
                     template = {
                         type = 'frame',
                         [':caption'] = 'property1',
                         children = {{
                             type = 'button',
-                            [':data'] = 'property2',
-                            [':caption'] = 'property3'
+                            [':caption'] = 'property1'
                         }, {
                             type = 'checkbox',
-                            data = child_darta,
-                            [':caption'] = 'property4'
-                        }, {
-                            type = 'checkbox',
-                            data = {
-                                property5 = 'test5'
-                            },
-                            [':caption'] = 'property5'
+                            [':caption'] = 'property2.property3'
                         }}
                     },
                     data = data
@@ -1019,69 +1062,16 @@ describe('ui', function()
                 vnode:__update_ui()
 
                 log:debug(helper.clone_table(element, helper.drop_vnode_ref))
-                assert(#element.children == 3)
+                assert(#element.children == 2)
                 assert(#ui.vnode.element_key_to_vnode_map)
                 assert(element.children[1].type == 'button')
-                assert(element.children[1].caption == 'test3')
+                assert(element.children[1].caption == 'test1')
                 assert(ui.vnode.get_vnode_by_element(element.children[1]) == vnode.__effective_child_vnode_list[1])
                 assert(element.children[1] == vnode.__effective_child_vnode_list[1].__element)
                 assert(element.children[2].type == 'checkbox')
-                assert(element.children[2].caption == 'test4')
+                assert(element.children[2].caption == 'test3')
                 assert(ui.vnode.get_vnode_by_element(element.children[2]) == vnode.__effective_child_vnode_list[2])
                 assert(element.children[2] == vnode.__effective_child_vnode_list[2].__element)
-                assert(element.children[3].type == 'checkbox')
-                assert(element.children[3].caption == 'test5')
-                assert(ui.vnode.get_vnode_by_element(element.children[3]) == vnode.__effective_child_vnode_list[3])
-                assert(element.children[3] == vnode.__effective_child_vnode_list[3].__element)
-            end)
-            it('initial with ref', function()
-                local helper = require('helper')
-                local ui = require('lib.ui')
-                local responsive = require('lib.responsive')
-
-                local element = helper.create_gui_element('frame')
-                local data = responsive.reactive.create({
-                    property1 = 'test1',
-                    property2 = {
-                        property3 = responsive.ref.create('test3')
-                    }
-                })
-                local child_darta = responsive.reactive.create({
-                    property4 = responsive.ref.create('test4')
-                })
-                log:debug(child_darta.property4.value)
-                local vnode = ui.vnode.create({
-                    template = {
-                        type = 'frame',
-                        [':caption'] = 'property1',
-                        children = {{
-                            type = 'button',
-                            [':data'] = 'property2',
-                            [':caption'] = 'property3'
-                        }, {
-                            type = 'checkbox',
-                            data = child_darta,
-                            [':caption'] = 'property4'
-                        }, {
-                            type = 'checkbox',
-                            data = {
-                                property5 = responsive.ref.create('test5')
-                            },
-                            [':caption'] = 'property5'
-                        }}
-                    },
-                    data = data
-                })
-
-                vnode:__setup()
-                vnode:__mount(element)
-                vnode:__update_ui()
-
-                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
-                assert(#element.children == 3)
-                assert(element.children[1].caption == 'test3')
-                assert(element.children[2].caption == 'test4')
-                assert(element.children[3].caption == 'test5')
             end)
             it('change property', function()
                 local helper = require('helper')
@@ -1095,27 +1085,19 @@ describe('ui', function()
                         property3 = 'test3'
                     }
                 })
-                local child_darta = responsive.reactive.create({
-                    property4 = 'test4'
-                })
                 local vnode = ui.vnode.create({
                     template = {
                         type = 'frame',
                         [':caption'] = 'property1',
                         children = {{
                             type = 'button',
-                            [':data'] = 'property2',
-                            [':caption'] = 'property3'
+                            [':caption'] = 'property1'
+                        }, {
+                            type = 'button',
+                            [':caption'] = 'property1'
                         }, {
                             type = 'checkbox',
-                            data = child_darta,
-                            [':caption'] = 'property4'
-                        }, {
-                            type = 'checkbox',
-                            data = {
-                                property5 = 'test5'
-                            },
-                            [':caption'] = 'property5'
+                            [':caption'] = 'property2.property3'
                         }}
                     },
                     data = data
@@ -1125,20 +1107,36 @@ describe('ui', function()
                 vnode:__mount(element)
                 vnode:__update_ui()
 
-                data.property2.property3 = 'test3_changed'
-                child_darta.property4 = 'test4_changed'
+                data.property1 = 'test1_changed1'
+                data.property2.property3 = 'test3_changed1'
 
                 log:debug(helper.clone_table(element, helper.drop_vnode_ref))
                 assert(#element.children == 3)
-                assert(element.children[1].caption == 'test3')
-                assert(element.children[2].caption == 'test4')
-                assert(element.children[3].caption == 'test5')
+                assert(element.children[1].caption == 'test1')
+                assert(element.children[2].caption == 'test1')
+                assert(element.children[3].caption == 'test3')
 
                 vnode:__update_ui()
                 log:debug(helper.clone_table(element, helper.drop_vnode_ref))
-                assert(element.children[1].caption == 'test3_changed')
-                assert(element.children[2].caption == 'test4_changed')
-                assert(element.children[3].caption == 'test5')
+                assert(element.children[1].caption == 'test1_changed1')
+                assert(element.children[2].caption == 'test1_changed1')
+                assert(element.children[3].caption == 'test3_changed1')
+
+                data.property1 = 'test1_changed2'
+                data.property2.property3 = 'test3_changed2'
+                vnode:__update_ui()
+                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+                assert(element.children[1].caption == 'test1_changed2')
+                assert(element.children[2].caption == 'test1_changed2')
+                assert(element.children[3].caption == 'test3_changed2')
+
+                data.property1 = 'test1_changed3'
+                data.property2.property3 = 'test3_changed3'
+                vnode:__update_ui()
+                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+                assert(element.children[1].caption == 'test1_changed3')
+                assert(element.children[2].caption == 'test1_changed3')
+                assert(element.children[3].caption == 'test3_changed3')
             end)
         end)
         it('dispose', function()

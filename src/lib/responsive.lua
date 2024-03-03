@@ -10,19 +10,28 @@ M.EVENT = {
 
 -- #region notifier
 M.notifier = {}
+
+M.notifier.REMOVED_HANDLER = 'R'
+
 M.notifier.METATABLE = {
     __type = 'knotifier'
 }
+
 M.notifier.PROTOTYPE = {
     add_listener = function(self, event, handler)
         if not self.__listener[event] then
-            self.__listener[event] = {}
+            self.__listener[event] = {
+                handler_map = {},
+                handler_id_list = {}
+            }
         end
-        table.insert(self.__listener[event], handler)
-        local listener_index = #self.__listener[event]
+        local handler_id = unique_id.generate('eh')
+        table.insert(self.__listener[event].handler_id_list, handler_id)
+        self.__listener[event].handler_map[handler_id] = handler
 
         return function()
-            table.remove(self.__listener[event], listener_index)
+            self.__listener[event].handler_map[handler_id] = nil
+            tools.array.remove_value(self.__listener[event].handler_id_list, handler_id)
         end
     end,
     emit = function(self, sender, event, ...)
@@ -31,13 +40,21 @@ M.notifier.PROTOTYPE = {
         end
 
         if self.__listener[event] then
-            for _, handler in ipairs(self.__listener[event]) do
+            for _, handler_id in ipairs(self.__listener[event].handler_id_list) do
+                local handler = self.__listener[event].handler_map[handler_id]
                 local status, value = pcall(handler, sender, event, ...)
 
                 if not status then
                     log:warn(value)
                 end
             end
+        end
+    end,
+    get_listener_count = function(self, event)
+        if self.__listener[event] then
+            return #self.__listener[event].handler_id_list
+        else
+            return 0
         end
     end
 }
@@ -277,9 +294,13 @@ M.watch.PROTOTYPE = {
                     self.__recorded_reactive_property[reactive.__id] = {}
                 end
                 if self.__recorded_reactive_property[reactive.__id][get_name] == nil then
+                    log:trace(string.format('watch %s detect %s.%s is read', self.__id, reactive.__id, get_name))
                     table.insert(self.__watch_dispose_list,
                         reactive:__add_listener(M.EVENT.PROPERTY_CHANGED, function(_, _, set_name, old_value, new_value)
                             if get_name == set_name then
+                                log:trace(
+                                    string.format('watch %s notify %s.%s is changed', self.__id, reactive.__id, set_name))
+                                log:trace(string.format('notifier %s', self.__notifier.__id))
                                 self.__notifier:emit(reactive, M.EVENT.PROPERTY_CHANGED, set_name, old_value, new_value)
                             end
                         end))
@@ -369,7 +390,8 @@ M.binding.PROTOTYPE = {
         end
 
         if self.__first_get then
-            self.__watch:add_listener(M.EVENT.PROPERTY_CHANGED, function(_, _, _, _, _)
+            self.__watch:add_listener(M.EVENT.PROPERTY_CHANGED, function(sender, _, name, _, _)
+                log:trace(string.format('binding %s set to dirty due to %s.%s changed', self.__id, sender.__id, name))
                 self:set_dirty(true)
                 self.__value_cache_valid = false
                 self.__value_cache_value = nil
@@ -397,6 +419,8 @@ M.binding.PROTOTYPE = {
         end
 
         self.__watch:stop()
+
+        log:trace(string.format('binding %s watch on %d properties', self.__id, #self.__watch.__watch_dispose_list))
 
         if status then
             self.__value_cache_valid = true

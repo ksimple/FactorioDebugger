@@ -1,9 +1,9 @@
 local ui_main_frame = require('ui.main_frame')
 local log = require('lib.log')
 local tools = require('lib.tools')
-local ui    = require('lib.ui')
+local ui = require('lib.ui')
 
-log.global_min_level = log.LEVEL.DEBUG
+log.global_min_level = log.LEVEL.TRACE
 log = log.get_log('control')
 log:info('lua version: ' .. _VERSION)
 
@@ -68,6 +68,9 @@ end
 local function handle_gui_click(event)
     log:debug('handle_gui_click')
     log:debug(event)
+
+    ui.process_event(event)
+    update_ui(event.player_index)
 end
 
 script.on_init(init)

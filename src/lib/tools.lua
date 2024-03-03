@@ -70,15 +70,13 @@ M.table_to_json = function(t)
 end
 
 M.array = {}
-M.array.remove = function(t, o)
-    local result = {}
-    for _, item in ipairs(t) do
-        if item ~= o then
-            table.insert(result, item)
+
+M.array.remove_value = function(t, value)
+    for i = #t, 1, -1 do
+        if t[i] == value then
+            table.remove(t, i)
         end
     end
-
-    return result
 end
 
 -- #region disposer
