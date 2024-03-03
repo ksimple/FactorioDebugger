@@ -929,7 +929,8 @@ describe('ui', function()
             local vnode = ui.vnode.create({
                 template = {
                     type = 'frame',
-                    caption = 'test'
+                    caption = 'test',
+                    enabled = false
                 }
             })
 
@@ -939,6 +940,7 @@ describe('ui', function()
 
             log:debug(element)
             assert(element.caption == 'test')
+            assert(element.enabled == false)
         end)
         it('wrong property name', function()
             local helper = require('helper')

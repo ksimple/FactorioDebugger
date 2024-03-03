@@ -12,19 +12,14 @@ M.build = function(parent)
     })
 
     local data
-    local button2_enabled = responsive.ref.create(false)
 
     data = responsive.reactive.create({
         tick = game.tick,
         text = '',
-        button1 = {
-            onclick = function()
-                button2_enabled.value = not button2_enabled.value
-            end
-        },
-        button2 = {
-            enabled = button2_enabled
-        }
+        onclick = function()
+            data.enabled = not data.enabled
+        end,
+        enabled = true
     })
 
     local vnode = ui.vnode.create({
@@ -39,15 +34,15 @@ M.build = function(parent)
             children = {{
                 type = 'button',
                 [':caption'] = '"button1 " .. tick',
-                ['@click'] = 'button1.onclick'
+                ['@click'] = 'onclick'
             }, {
-                type = 'button',
-                [':caption'] = 'text',
-                [':enabled'] = 'button2.enabled'
+                type = 'textfield',
+                [':text'] = 'text',
+                enabled = false
             }, {
                 type = 'textfield',
                 ['#text'] = 'text',
-                [':enabled'] = 'button2.enabled'
+                [':enabled'] = 'enabled'
             }}
         }
     })

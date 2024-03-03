@@ -3,7 +3,7 @@ local log = require('lib.log')
 local tools = require('lib.tools')
 local ui = require('lib.ui')
 
-log.global_min_level = log.LEVEL.TRACE
+log.global_min_level = log.LEVEL.DEBUG
 log = log.get_log('control')
 log:info('lua version: ' .. _VERSION)
 

@@ -688,7 +688,7 @@ M.vnode.PROTOTYPE = {
 
                     table.insert(property_execution_list, execution)
                     property_binding_map[name] = binding
-                elseif template[name] then
+                elseif template[name] ~= nil then
                     -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
                     local execution = M.execution.create_value_execution(template[name], function(execution, value)
                         log:trace('设置 ' .. name .. ': ' .. tostring(value))
