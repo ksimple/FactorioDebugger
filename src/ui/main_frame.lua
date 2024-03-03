@@ -16,6 +16,7 @@ M.build = function(parent)
 
     data = responsive.reactive.create({
         tick = game.tick,
+        text = '',
         button1 = {
             onclick = function()
                 button2_enabled.value = not button2_enabled.value
@@ -41,7 +42,11 @@ M.build = function(parent)
                 ['@click'] = 'button1.onclick'
             }, {
                 type = 'button',
-                [':caption'] = '"button2 " .. tick',
+                [':caption'] = 'text',
+                [':enabled'] = 'button2.enabled'
+            }, {
+                type = 'textfield',
+                ['#text'] = 'text',
                 [':enabled'] = 'button2.enabled'
             }}
         }

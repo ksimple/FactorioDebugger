@@ -9,7 +9,7 @@ M.process_event = function(event)
     local vnode = M.vnode.get_vnode_by_element(event.element)
 
     if vnode then
-        vnode:__process_gui_event(event)
+        vnode:__process_event(event)
     end
 end
 
@@ -619,9 +619,14 @@ M.vnode.PROTOTYPE = {
     end,
 
     -- #region event handling
-    __process_gui_event = function(self, event)
+    __process_event = function(self, event)
         if event.name == defines.events.on_gui_click then
             self:__invoke_event_handler('click', event)
+        elseif event.name == defines.events.on_gui_confirmed then
+            if self.__property_binding_map['text'] then
+                self.__property_binding_map['text']:set(event.element.text)
+            end
+            self:__invoke_event_handler('confirmed', event)
         end
     end,
 
@@ -650,7 +655,7 @@ M.vnode.PROTOTYPE = {
         local property_binding_map = {}
 
         for name, _ in pairs(template) do
-            if name:sub(1, 1) == ':' or name:sub(1, 1) == '@' then
+            if name:sub(1, 1) == ':' or name:sub(1, 1) == '@' or name:sub(1, 1) == '#' then
                 name = name:sub(2)
             end
             if not M.vnode.ELEMENT_PROPERTY_DEFINITION[name] and not M.vnode.EVENT_MAP[name] and name ~= 'type' and name ~=
@@ -672,6 +677,16 @@ M.vnode.PROTOTYPE = {
                     end)
 
                     table.insert(property_execution_list, execution)
+                elseif template['#' .. name] then
+                    -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
+                    local binding = responsive.binding.create(data, template['#' .. name],
+                        responsive.binding.MODE.PULL_AND_PUSH)
+                    local execution = M.execution.create_value_execution(binding, function(execution, value)
+                        log:trace('设置 ' .. name .. ': ' .. tostring(value))
+                        self[name] = value
+                    end)
+
+                    table.insert(property_execution_list, execution)
                     property_binding_map[name] = binding
                 elseif template[name] then
                     -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
@@ -681,7 +696,6 @@ M.vnode.PROTOTYPE = {
                     end)
 
                     table.insert(property_execution_list, execution)
-                    property_binding_map[name] = binding
                 end
             end
         end
