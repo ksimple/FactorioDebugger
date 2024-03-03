@@ -1,3 +1,5 @@
+local unique_id = require('lib.unique_id')
+
 local function prevent_recursive(t, k, v, context)
     if not context.processed then
         context.processed = {}
@@ -67,8 +69,8 @@ M.table_to_json = function(t)
     return game.table_to_json(M.clone_table(t, remove_function, {}))
 end
 
-M.table = {}
-M.table.remove = function(t, o)
+M.array = {}
+M.array.remove = function(t, o)
     local result = {}
     for _, item in ipairs(t) do
         if item ~= o then
@@ -79,4 +81,40 @@ M.table.remove = function(t, o)
     return result
 end
 
+-- #region disposer
+
+M.disposer = {}
+
+M.disposer.METATABLE = {
+    __type = "kdispose"
+}
+
+M.disposer.PROTOTYPE = {
+    add = function(self, dispose_func)
+        table.insert(self.__dispose_list, dispose_func)
+        local index = #self.__dispose_list
+
+        return function()
+            table.remove(self.__dispose_list, index)
+        end
+    end,
+
+    dispose = function(self)
+        for _, dispose_func in ipairs(self.__dispose_list) do
+            dispose_func()
+        end
+
+        self.__dispose_list = {}
+    end
+}
+
+setmetatable(M.disposer.PROTOTYPE, M.disposer.METATABLE)
+
+M.disposer.create = function()
+    return M.inherit_prototype(M.disposer.PROTOTYPE, {
+        __id = unique_id.generate('binding'),
+        __dispose_list = {}
+    })
+end
+-- #endregion
 return M

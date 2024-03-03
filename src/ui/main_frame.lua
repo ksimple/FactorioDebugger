@@ -12,13 +12,20 @@ M.build = function(parent)
     })
 
     local data
+    local buttun2_enabled = responsive.ref.create(false)
 
     data = responsive.reactive.create({
         tick = game.tick,
-        button = {
+        button1 = {
             tick = responsive.computed.create(function()
                 return data.tick
             end)
+        },
+        button2 = {
+            tick = responsive.computed.create(function()
+                return data.tick
+            end),
+            enabled = buttun2_enabled
         }
     })
 
@@ -33,8 +40,13 @@ M.build = function(parent)
             },
             children = {{
                 type = 'button',
-                [':data'] = 'button',
-                [':caption'] = '"button " .. tick'
+                [':data'] = 'button1',
+                [':caption'] = '"button1 " .. tick'
+            }, {
+                type = 'button',
+                [':data'] = 'button2',
+                [':caption'] = '"button2 " .. tick',
+                [':enabled'] = 'enabled'
             }}
         }
     })

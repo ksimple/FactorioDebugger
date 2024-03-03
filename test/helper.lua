@@ -91,7 +91,7 @@ M.create_gui_element = function(type, player_index)
 
     element.destroy = function()
         if element.__parent then
-            element.__parent.children = tools.table.remove(element.__parent.children, element)
+            element.__parent.children = tools.array.remove(element.__parent.children, element)
         end
     end
 

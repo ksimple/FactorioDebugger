@@ -328,6 +328,7 @@ M.binding = {}
 M.binding.METATABLE = {
     __type = 'kbinding'
 }
+
 M.binding.PROTOTYPE = {
     __dirty = true,
     __first_get = true,
@@ -419,6 +420,7 @@ M.binding.PROTOTYPE = {
         end
     end
 }
+
 setmetatable(M.binding.PROTOTYPE, M.binding.METATABLE)
 
 M.binding.MODE = {

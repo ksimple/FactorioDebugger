@@ -41,6 +41,54 @@ describe('log', function()
     end)
 end)
 
+describe('tools', function()
+    describe('disposer', function()
+        it('check type', function()
+            local helper = require('helper')
+            local tools = require('lib.tools')
+
+            local disposer = tools.disposer.create()
+
+            assert(getmetatable(disposer) == tools.disposer.METATABLE)
+        end)
+        it('dispose', function()
+            local helper = require('helper')
+            local tools = require('lib.tools')
+
+            local disposer = tools.disposer.create()
+            local log_list = {}
+
+            disposer:add(function()
+                table.insert(log_list, 'dispose 1 called')
+            end)
+
+            disposer:add(function()
+                table.insert(log_list, 'dispose 2 called')
+            end)
+
+            assert(#log_list == 0)
+
+            disposer:dispose()
+            assert(#log_list == 2)
+
+            local remove_handler = disposer:add(function()
+                table.insert(log_list, 'dispose 3 called')
+            end)
+            disposer:add(function()
+                table.insert(log_list, 'dispose 4 called')
+            end)
+
+            remove_handler()
+
+            disposer:dispose()
+            assert(#log_list == 3)
+            assert(log_list[1] == 'dispose 1 called')
+            assert(log_list[2] == 'dispose 2 called')
+            assert(log_list[3] == 'dispose 4 called')
+        end)
+    end)
+end)
+
 describe('responsive', function()
     describe('notifier', function()
         it('check type', function()
@@ -873,6 +921,24 @@ describe('ui', function()
 
             log:debug(element)
             assert(element.caption == 'test')
+        end)
+        it('wrong property name', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+
+            local element = helper.create_gui_element('frame')
+            local vnode = ui.vnode.create({
+                template = {
+                    type = 'frame',
+                    catpion = 'test'
+                }
+            })
+
+            local error, message = pcall(vnode.__setup, vnode)
+
+            log:debug(tostring(error) .. ', ' .. message)
+            assert(not error)
+            assert(message:find('catpion') > 0)
         end)
         it('pull binding', function()
             local helper = require('helper')

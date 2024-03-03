@@ -1,13 +1,14 @@
 local ui_main_frame = require('ui.main_frame')
 local log = require('lib.log')
 local tools = require('lib.tools')
+local ui    = require('lib.ui')
 
 log.global_min_level = log.LEVEL.DEBUG
 log = log.get_log('control')
 log:info('lua version: ' .. _VERSION)
 
 local function init_player(player)
-    log:trace('init_player, player_index: ' .. player.index)
+    log:debug('init_player, player_index: ' .. player.index)
     if not global.player_map then
         global.player_map = {}
     end
@@ -19,11 +20,11 @@ local function init_player(player)
 end
 
 local function init()
-    log:trace('init')
+    log:debug('init')
     for _, player in pairs(game.players) do
         init_player(player)
     end
-    log:trace(tools.table_to_json(global))
+    log:debug(tools.table_to_json(global))
 end
 
 local PLAYER_UI = {}
@@ -35,9 +36,9 @@ local function update_ui(player_index)
 end
 
 local function handle_lua_shortcut(event)
-    log:trace('handle_lua_shortcut')
-    log:trace(tools.table_to_json(event))
-    log:trace(tools.table_to_json(global))
+    log:debug('handle_lua_shortcut')
+    log:debug(tools.table_to_json(event))
+    log:debug(tools.table_to_json(global))
 
     if not PLAYER_UI[event.player_index] then
         PLAYER_UI[event.player_index] = {}
@@ -53,18 +54,24 @@ local function handle_lua_shortcut(event)
 end
 
 local function handle_player_create(event)
-    log:trace('handle_player_created')
-    log:trace(tools.table_to_json(event))
+    log:debug('handle_player_created')
+    log:debug(tools.table_to_json(event))
     init_player(game.get_player(event.player_index))
 end
 
 local function handle_configuration_change(event)
-    log:trace('handle_configuration_change')
-    log:trace(tools.table_to_json(event))
+    log:debug('handle_configuration_change')
+    log:debug(tools.table_to_json(event))
     init()
+end
+
+local function handle_gui_click(event)
+    log:debug('handle_gui_click')
+    log:debug(event)
 end
 
 script.on_init(init)
 script.on_event(defines.events.on_lua_shortcut, handle_lua_shortcut)
 script.on_event(defines.events.on_player_created, handle_player_create)
+script.on_event(defines.events.on_gui_click, handle_gui_click)
 script.on_configuration_changed(handle_configuration_change)

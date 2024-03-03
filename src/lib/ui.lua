@@ -12,6 +12,8 @@ M.vstyle.METATABLE = {
     __index = function(self, name)
         if string.sub(name, 1, 2) == '__' then
             return rawget(self, name)
+        elseif rawget(self, '__get_' .. name) then
+            return rawget(self, '__get_' .. name)(self)
         else
             -- TODO: 这里是不是应该直接从 element 上读取？
             return rawget(self, '__property_table')[name]
@@ -20,6 +22,8 @@ M.vstyle.METATABLE = {
     __newindex = function(self, name, value)
         if string.sub(name, 1, 2) == '__' then
             error('not supported, name: ' .. name)
+        elseif self['__set_' .. name] then
+            self['__set_' .. name](self, value)
         else
             self.__vnode.__element.style[name] = value
             self.__property_table[name] = value
@@ -208,18 +212,35 @@ M.vnode.STAGE = {
 
 M.vnode.METATABLE = {
     __type = 'kvnode',
-    __index = function(vnode, name)
+    __index = function(self, name)
         if string.sub(name, 1, 2) == '__' then
-            return rawget(vnode, name)
+            return rawget(self, name)
+        elseif rawget(self, '__get_' .. name) then
+            return rawget(self, '__get_' .. name)(self)
         else
-            return rawget(vnode, '__get_' .. name)(vnode)
+            if M.vnode.ELEMENT_PROPERTY_DEFINITION[name] then
+                return self.__property_table[name]
+            else
+                error('property not found: ' .. name)
+            end
         end
     end,
-    __newindex = function(vnode, name, value)
+    __newindex = function(self, name, value)
         if string.sub(name, 1, 2) == '__' then
             error('not supported, name: ' .. name)
+        elseif self['__set_' .. name] then
+            self['__set_' .. name](self, value)
         else
-            vnode['__set_' .. name](vnode, value)
+            if M.vnode.ELEMENT_PROPERTY_DEFINITION[name] then
+                if M.vnode.ELEMENT_PROPERTY_DEFINITION[name].write then
+                    self.__element[name] = value
+                    self.__property_table[name] = value
+                else
+                    error('cannot write, name: ' .. name)
+                end
+            else
+                error('property not found: ' .. name)
+            end
         end
     end
 }
@@ -227,6 +248,7 @@ M.vnode.METATABLE = {
 M.vnode.ELEMENT_TYPE_MAP = {
     frame = true,
     button = true,
+    -- TODO: 应该分成两个分别支持横向和竖向
     flow = true,
     table = true,
     textfield = true,
@@ -248,21 +270,280 @@ M.vnode.ELEMENT_TYPE_MAP = {
     switch = true
 }
 
-M.vnode.ELEMENT_PROPERTY_NAME_LIST = {'name', 'caption', 'value', 'visible', 'text', 'state', 'sprite',
-                                      'resize_to_sprite', 'hovered_sprite', 'clicked_sprite', 'tooltip', 'elem_tooltip',
-                                      'horizontal_scroll_policy', 'vertical_scroll_policy', 'items', 'selected_index',
-                                      'number', 'show_percent_for_small_numbers', 'location', 'auto_center',
-                                      'badge_text', 'auto_toggle', 'toggled', 'game_controller_interaction', 'position',
-                                      'surface_index', 'zoom', 'minimap_player_index', 'force', 'elem_value',
-                                      'elem_filters', 'selectable', 'word_wrap', 'read_only', 'enabled',
-                                      'ignored_by_interaction', 'locked', 'draw_vertical_lines',
-                                      'draw_horizontal_lines', 'draw_horizontal_line_after_headers',
-                                      'vertical_centering', 'slider_value', 'mouse_button_filter', 'numeric',
-                                      'allow_decimal', 'allow_negative', 'is_password', 'lose_focus_on_confirm',
-                                      'clear_and_focus_on_right_click', 'drag_target', 'selected_tab_index', 'entity',
-                                      'anchor', 'tags', 'raise_hover_events', 'switch_state', 'allow_none_state',
-                                      'left_label_caption', 'left_label_tooltip', 'right_label_caption',
-                                      'right_label_tooltip'}
+M.vnode.ELEMENT_PROPERTY_DEFINITION = {
+    allow_decimal = {
+        read = true,
+        write = true
+    },
+    allow_negative = {
+        read = true,
+        write = true
+    },
+    allow_none_state = {
+        read = true,
+        write = true
+    },
+    anchor = {
+        read = true,
+        write = true
+    },
+    auto_center = {
+        read = true,
+        write = true
+    },
+    auto_toggle = {
+        read = true,
+        write = true
+    },
+    badge_text = {
+        read = true,
+        write = true
+    },
+    caption = {
+        read = true,
+        write = true
+    },
+    children_names = {
+        read = true,
+        write = false
+    },
+    clicked_sprite = {
+        read = true,
+        write = true
+    },
+    clear_and_focus_on_right_click = {
+        read = true,
+        write = true
+    },
+    column_count = {
+        read = true,
+        write = false
+    },
+    direction = {
+        read = true,
+        write = false
+    },
+    drag_target = {
+        read = true,
+        write = true
+    },
+    draw_horizontal_line_after_headers = {
+        read = true,
+        write = true
+    },
+    draw_horizontal_lines = {
+        read = true,
+        write = true
+    },
+    draw_vertical_lines = {
+        read = true,
+        write = true
+    },
+    elem_filters = {
+        read = true,
+        write = true
+    },
+    elem_tooltip = {
+        read = true,
+        write = true
+    },
+    elem_type = {
+        read = true,
+        write = false
+    },
+    elem_value = {
+        read = true,
+        write = true
+    },
+    enabled = {
+        read = true,
+        write = true
+    },
+    entity = {
+        read = true,
+        write = true
+    },
+    force = {
+        read = true,
+        write = true
+    },
+    game_controller_interaction = {
+        read = true,
+        write = true
+    },
+    gui = {
+        read = true,
+        write = false
+    },
+    hovered_sprite = {
+        read = true,
+        write = true
+    },
+    horizontal_scroll_policy = {
+        read = true,
+        write = true
+    },
+    ignored_by_interaction = {
+        read = true,
+        write = true
+    },
+    index = {
+        read = true,
+        write = false
+    },
+    is_password = {
+        read = true,
+        write = true
+    },
+    items = {
+        read = true,
+        write = true
+    },
+    left_label_caption = {
+        read = true,
+        write = true
+    },
+    left_label_tooltip = {
+        read = true,
+        write = true
+    },
+    location = {
+        read = true,
+        write = true
+    },
+    locked = {
+        read = true,
+        write = true
+    },
+    lose_focus_on_confirm = {
+        read = true,
+        write = true
+    },
+    minimap_player_index = {
+        read = true,
+        write = true
+    },
+    mouse_button_filter = {
+        read = true,
+        write = true
+    },
+    name = {
+        read = true,
+        write = true
+    },
+    number = {
+        read = true,
+        write = true
+    },
+    object_name = {
+        read = true,
+        write = false
+    },
+    parent = {
+        read = true,
+        write = false
+    },
+    player_index = {
+        read = true,
+        write = false
+    },
+    position = {
+        read = true,
+        write = true
+    },
+    raise_hover_events = {
+        read = true,
+        write = true
+    },
+    read_only = {
+        read = true,
+        write = true
+    },
+    right_label_caption = {
+        read = true,
+        write = true
+    },
+    right_label_tooltip = {
+        read = true,
+        write = true
+    },
+    selected_index = {
+        read = true,
+        write = true
+    },
+    selected_tab_index = {
+        read = true,
+        write = true
+    },
+    show_percent_for_small_numbers = {
+        read = true,
+        write = true
+    },
+    slider_value = {
+        read = true,
+        write = true
+    },
+    sprite = {
+        read = true,
+        write = true
+    },
+    state = {
+        read = true,
+        write = true
+    },
+    surface_index = {
+        read = true,
+        write = true
+    },
+    switch_state = {
+        read = true,
+        write = true
+    },
+    tags = {
+        read = true,
+        write = true
+    },
+    text = {
+        read = true,
+        write = true
+    },
+    toggled = {
+        read = true,
+        write = true
+    },
+    tooltip = {
+        read = true,
+        write = true
+    },
+    valid = {
+        read = true,
+        write = false
+    },
+    value = {
+        read = true,
+        write = true
+    },
+    vertical_centering = {
+        read = true,
+        write = true
+    },
+    vertical_scroll_policy = {
+        read = true,
+        write = true
+    },
+    visible = {
+        read = true,
+        write = true
+    },
+    word_wrap = {
+        read = true,
+        write = true
+    },
+    zoom = {
+        read = true,
+        write = true
+    }
+}
 
 M.vnode.element_key_to_vnode_map = {}
 
@@ -277,43 +558,15 @@ M.vnode.get_vnode_by_element = function(element)
     return M.vnode.element_key_to_vnode_map[element_key]
 end
 
+-- TODO: 处理事件
 M.vnode.PROTOTYPE = {
-    __stage = M.vnode.STAGE.SETUP,
+    -- #region special properties processing
     __get_type = function(self)
         return self.__template.type
     end,
-    __get_caption = function(self)
-        local name = 'caption'
-        return self.__property_table[name]
-    end,
-    __set_caption = function(self, value)
-        local name = 'caption'
-        self.__element[name] = value
-        self.__property_table[name] = value
-    end,
-    __update_ui = function(self)
-        log:trace(string.format('call update_ui, vnode: %s', self.__id))
-        if self.__stage ~= M.vnode.STAGE.UPDATE then
-            error('wrong stage, stage: ' .. self.__stage)
-        end
-        if self.__property_execution_list then
-            for _, execution in ipairs(self.__property_execution_list) do
-                if execution:dirty() then
-                    execution:process()
-                end
-            end
-        end
-        self.__style:__update_ui()
-        if self.__effective_child_vnode_list_execution:dirty() then
-            self.__effective_child_vnode_list_execution:process()
-        end
+    -- #endregion
 
-        if self.__effective_child_vnode_list then
-            for _, vnode in ipairs(self.__effective_child_vnode_list) do
-                vnode:__update_ui()
-            end
-        end
-    end,
+    -- #region children processing
     __generate_child_vnode = function(self, child_template, old_vnode_list)
         if old_vnode_list then
             return old_vnode_list
@@ -375,20 +628,17 @@ M.vnode.PROTOTYPE = {
         -- TODO: 思考一下这里的脏标志是否还有一定的作用
         return responsive.binding.create(computed, 'effective_child_vnode_list')
     end,
+    -- #endregion
+
     __dispose = function(self)
         if self.__stage == M.vnode.STAGE.UPDATE then
             self:__unmount()
         end
-        for _, binding in pairs(self.__binding_list) do
-            binding:dispose()
-        end
-        for _, dispose in pairs(self.__dispose_list) do
-            dispose()
-        end
-        if self.__execution then
-            self.__execution:dispose()
-        end
+        self.__disposer:dispose()
     end,
+
+    -- #region stage processing
+    __stage = M.vnode.STAGE.SETUP,
     __setup = function(self)
         log:trace(string.format('call setup, vnode: %s', self.__id))
         if self.__stage ~= M.vnode.STAGE.SETUP then
@@ -399,8 +649,20 @@ M.vnode.PROTOTYPE = {
         local element = self.__element
         local property_execution_list = {}
 
+        for name, _ in pairs(template) do
+            if name:sub(1, 1) == ':' then
+                name = name:sub(2)
+            end
+            if not M.vnode.ELEMENT_PROPERTY_DEFINITION[name] and name ~= 'type' and name ~= 'style' and name ~=
+                'children' and name ~= 'data' then
+                error('wrong property name in template, name: ' .. name)
+            end
+        end
+
         if M.vnode.ELEMENT_TYPE_MAP[self.type] then
-            for _, name in ipairs(M.vnode.ELEMENT_PROPERTY_NAME_LIST) do
+            for name, definition in pairs(M.vnode.ELEMENT_PROPERTY_DEFINITION) do
+                -- TODO: 增加双向绑定的功能
+                -- TODO: 增加双向绑定的测试用例
                 if template[':' .. name] then
                     -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
                     local binding = responsive.binding.create(data, template[':' .. name], responsive.binding.MODE.PULL)
@@ -425,6 +687,14 @@ M.vnode.PROTOTYPE = {
         end
 
         rawset(self, '__property_execution_list', property_execution_list)
+
+        self.__disposer:add(function()
+            for _, execution in ipairs(self.__property_execution_list) do
+                execution.dispose()
+            end
+            rawset(self, '__property_execution_list', nil)
+        end)
+
         self.__style:__setup()
         rawset(self, '__effective_child_vnode_list_execution',
             M.execution
@@ -474,6 +744,10 @@ M.vnode.PROTOTYPE = {
                     end
                 end
             end))
+
+        self.__disposer:add(function()
+            self.__effective_child_vnode_list_execution:dispose()
+        end)
         rawset(self, '__stage', M.vnode.STAGE.MOUNT)
     end,
     __mount = function(self, element)
@@ -489,6 +763,29 @@ M.vnode.PROTOTYPE = {
         M.vnode.element_key_to_vnode_map[M.vnode.get_element_key(element)] = self
         rawset(self, '__stage', M.vnode.STAGE.UPDATE)
     end,
+    __update_ui = function(self)
+        log:trace(string.format('call update_ui, vnode: %s', self.__id))
+        if self.__stage ~= M.vnode.STAGE.UPDATE then
+            error('wrong stage, stage: ' .. self.__stage)
+        end
+        if self.__property_execution_list then
+            for _, execution in ipairs(self.__property_execution_list) do
+                if execution:dirty() then
+                    execution:process()
+                end
+            end
+        end
+        self.__style:__update_ui()
+        if self.__effective_child_vnode_list_execution:dirty() then
+            self.__effective_child_vnode_list_execution:process()
+        end
+
+        if self.__effective_child_vnode_list then
+            for _, vnode in ipairs(self.__effective_child_vnode_list) do
+                vnode:__update_ui()
+            end
+        end
+    end,
     __unmount = function(self)
         log:trace(string.format('call unmount, vnode: %s, element: %d', self.__id, (self.__element or {}).index))
         if self.__stage ~= M.vnode.STAGE.UPDATE then
@@ -502,6 +799,7 @@ M.vnode.PROTOTYPE = {
         rawset(self, '__element', nil)
         rawset(self, '__stage', M.vnode.STAGE.UPDATE)
     end
+    -- #endregion
 }
 setmetatable(M.vnode.PROTOTYPE, M.vnode.METATABLE)
 
@@ -522,14 +820,17 @@ M.vnode.create = function(definition)
         __parent_vnode = parent_vnode,
         __element = nil,
         __property_table = {},
-        __binding_list = {},
         __binding_set_map = {},
-        __dispose_list = {},
         __property_execution_list = nil,
-        __child_vnode_list = {}
+        __child_vnode_list = {},
+        __disposer = tools.disposer.create()
     })
 
     rawset(vnode, '__style', M.vstyle.create(vnode))
+
+    vnode.__disposer:add(function()
+        vnode.__style:dispose()
+    end)
 
     return vnode
 end
