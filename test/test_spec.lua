@@ -99,7 +99,7 @@ describe('responsive', function()
 
             assert(getmetatable(notifier) == responsive.notifier.METATABLE)
         end)
-        it('add listener', function()
+        it('add and remove listener 1', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
 
@@ -139,7 +139,7 @@ describe('responsive', function()
             assert(log_list[3] == "4 write sender write message")
             assert(log_list[4] == "5 write sender write message")
         end)
-        it('dispose', function()
+        it('add and remove listener 2', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
 
