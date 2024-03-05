@@ -32,17 +32,23 @@ M.build = function(parent)
                 height = 400
             },
             children = {{
-                type = 'button',
-                [':caption'] = '"button1 " .. tick',
-                ['@click'] = 'onclick'
-            }, {
-                type = 'textfield',
-                [':text'] = 'text',
-                enabled = false
-            }, {
-                type = 'textfield',
-                ['#text'] = 'text',
-                [':enabled'] = 'enabled'
+                type = 'v-flow',
+                children = {{
+                    type = 'v-flow',
+                    children = {{
+                        type = 'button',
+                        [':caption'] = '"button1 " .. tick',
+                        ['@click'] = 'onclick'
+                    }, {
+                        type = 'textfield',
+                        [':text'] = 'text',
+                        enabled = false
+                    }}
+                }, {
+                    type = 'textfield',
+                    ['#text'] = 'text',
+                    [':enabled'] = 'enabled'
+                }}
             }}
         }
     })

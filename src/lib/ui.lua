@@ -40,26 +40,26 @@ M.vstyle.METATABLE = {
     end
 }
 
-M.vstyle.STYLE_PROPERTY_NAME_LIST = { 'minimal_width', 'maximal_width', 'minimal_height', 'maximal_height',
-    'natural_width', 'natural_height', 'top_padding', 'right_padding',
-    'bottom_padding', 'left_padding', 'top_margin', 'right_margin', 'bottom_margin',
-    'left_margin', 'horizontal_align', 'vertical_align', 'font_color', 'font',
-    'top_cell_padding', 'right_cell_padding', 'bottom_cell_padding',
-    'left_cell_padding', 'horizontally_stretchable', 'vertically_stretchable',
-    'horizontally_squashable', 'vertically_squashable', 'rich_text_setting',
-    'hovered_font_color', 'clicked_font_color', 'disabled_font_color',
-    'pie_progress_color', 'clicked_vertical_offset', 'selected_font_color',
-    'selected_hovered_font_color', 'selected_clicked_font_color',
-    'strikethrough_color', 'draw_grayscale_picture', 'horizontal_spacing',
-    'vertical_spacing', 'use_header_filler', 'bar_width', 'color', 'single_line',
-    'extra_top_padding_when_activated', 'extra_bottom_padding_when_activated',
-    'extra_left_padding_when_activated', 'extra_right_padding_when_activated',
-    'extra_top_margin_when_activated', 'extra_bottom_margin_when_activated',
-    'extra_left_margin_when_activated', 'extra_right_margin_when_activated',
-    'stretch_image_to_widget_size', 'badge_font', 'badge_horizontal_spacing',
-    'default_badge_font_color', 'selected_badge_font_color',
-    'disabled_badge_font_color', 'width', 'height', 'size', 'padding', 'margin',
-    'cell_padding', 'extra_padding_when_activated', 'extra_margin_when_activated' }
+M.vstyle.STYLE_PROPERTY_NAME_LIST = {'minimal_width', 'maximal_width', 'minimal_height', 'maximal_height',
+                                     'natural_width', 'natural_height', 'top_padding', 'right_padding',
+                                     'bottom_padding', 'left_padding', 'top_margin', 'right_margin', 'bottom_margin',
+                                     'left_margin', 'horizontal_align', 'vertical_align', 'font_color', 'font',
+                                     'top_cell_padding', 'right_cell_padding', 'bottom_cell_padding',
+                                     'left_cell_padding', 'horizontally_stretchable', 'vertically_stretchable',
+                                     'horizontally_squashable', 'vertically_squashable', 'rich_text_setting',
+                                     'hovered_font_color', 'clicked_font_color', 'disabled_font_color',
+                                     'pie_progress_color', 'clicked_vertical_offset', 'selected_font_color',
+                                     'selected_hovered_font_color', 'selected_clicked_font_color',
+                                     'strikethrough_color', 'draw_grayscale_picture', 'horizontal_spacing',
+                                     'vertical_spacing', 'use_header_filler', 'bar_width', 'color', 'single_line',
+                                     'extra_top_padding_when_activated', 'extra_bottom_padding_when_activated',
+                                     'extra_left_padding_when_activated', 'extra_right_padding_when_activated',
+                                     'extra_top_margin_when_activated', 'extra_bottom_margin_when_activated',
+                                     'extra_left_margin_when_activated', 'extra_right_margin_when_activated',
+                                     'stretch_image_to_widget_size', 'badge_font', 'badge_horizontal_spacing',
+                                     'default_badge_font_color', 'selected_badge_font_color',
+                                     'disabled_badge_font_color', 'width', 'height', 'size', 'padding', 'margin',
+                                     'cell_padding', 'extra_padding_when_activated', 'extra_margin_when_activated'}
 
 M.vstyle.PROTOTYPE = {
     __setup = function(self)
@@ -221,6 +221,7 @@ M.vnode.ELEMENT_TYPE_MAP = {
     button = true,
     -- TODO: 应该分成两个分别支持横向和竖向
     flow = true,
+    ['v-flow'] = true,
     table = true,
     textfield = true,
     progressbar = true,
@@ -631,10 +632,18 @@ M.vnode.PROTOTYPE = {
         end
         for _, vnode in ipairs(child_vnode_list) do
             if vnode.__stage == M.vnode.STAGE.MOUNT then
-                vnode:__mount(self.__element.add({
-                    type = vnode.type,
-                    tags = {}
-                }))
+                if vnode.type == 'v-flow' then
+                    vnode:__mount(self.__element.add({
+                        type = 'flow',
+                        direction = 'vertical',
+                        tags = {}
+                    }))
+                else
+                    vnode:__mount(self.__element.add({
+                        type = vnode.type,
+                        tags = {}
+                    }))
+                end
             end
         end
 
@@ -757,6 +766,8 @@ M.vnode.PROTOTYPE = {
                 end
             end
         elseif self.type == M.vnode.VNODE_TYPE_VIRTUAL then
+            -- TODO: 重新考虑一下虚节点的使用场景，暂时禁用
+            error('virtual is not supported temporarily')
         else
             error('unknown type: ' .. self.type)
         end
@@ -772,8 +783,7 @@ M.vnode.PROTOTYPE = {
 
         self.__style:__setup()
         rawset(self, '__effective_child_vnode_list_execution',
-            M.execution
-            .create_value_execution(self:__get_effective_child_vnode_list_binding(),
+            M.execution.create_value_execution(self:__get_effective_child_vnode_list_binding(),
                 function(execution, child_vnode_list)
                     self:__process_effective_child_vnode_list(child_vnode_list)
                 end))
