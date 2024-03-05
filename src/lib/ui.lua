@@ -40,26 +40,26 @@ M.vstyle.METATABLE = {
     end
 }
 
-M.vstyle.STYLE_PROPERTY_NAME_LIST = {'minimal_width', 'maximal_width', 'minimal_height', 'maximal_height',
-                                     'natural_width', 'natural_height', 'top_padding', 'right_padding',
-                                     'bottom_padding', 'left_padding', 'top_margin', 'right_margin', 'bottom_margin',
-                                     'left_margin', 'horizontal_align', 'vertical_align', 'font_color', 'font',
-                                     'top_cell_padding', 'right_cell_padding', 'bottom_cell_padding',
-                                     'left_cell_padding', 'horizontally_stretchable', 'vertically_stretchable',
-                                     'horizontally_squashable', 'vertically_squashable', 'rich_text_setting',
-                                     'hovered_font_color', 'clicked_font_color', 'disabled_font_color',
-                                     'pie_progress_color', 'clicked_vertical_offset', 'selected_font_color',
-                                     'selected_hovered_font_color', 'selected_clicked_font_color',
-                                     'strikethrough_color', 'draw_grayscale_picture', 'horizontal_spacing',
-                                     'vertical_spacing', 'use_header_filler', 'bar_width', 'color', 'single_line',
-                                     'extra_top_padding_when_activated', 'extra_bottom_padding_when_activated',
-                                     'extra_left_padding_when_activated', 'extra_right_padding_when_activated',
-                                     'extra_top_margin_when_activated', 'extra_bottom_margin_when_activated',
-                                     'extra_left_margin_when_activated', 'extra_right_margin_when_activated',
-                                     'stretch_image_to_widget_size', 'badge_font', 'badge_horizontal_spacing',
-                                     'default_badge_font_color', 'selected_badge_font_color',
-                                     'disabled_badge_font_color', 'width', 'height', 'size', 'padding', 'margin',
-                                     'cell_padding', 'extra_padding_when_activated', 'extra_margin_when_activated'}
+M.vstyle.STYLE_PROPERTY_NAME_LIST = { 'minimal_width', 'maximal_width', 'minimal_height', 'maximal_height',
+    'natural_width', 'natural_height', 'top_padding', 'right_padding',
+    'bottom_padding', 'left_padding', 'top_margin', 'right_margin', 'bottom_margin',
+    'left_margin', 'horizontal_align', 'vertical_align', 'font_color', 'font',
+    'top_cell_padding', 'right_cell_padding', 'bottom_cell_padding',
+    'left_cell_padding', 'horizontally_stretchable', 'vertically_stretchable',
+    'horizontally_squashable', 'vertically_squashable', 'rich_text_setting',
+    'hovered_font_color', 'clicked_font_color', 'disabled_font_color',
+    'pie_progress_color', 'clicked_vertical_offset', 'selected_font_color',
+    'selected_hovered_font_color', 'selected_clicked_font_color',
+    'strikethrough_color', 'draw_grayscale_picture', 'horizontal_spacing',
+    'vertical_spacing', 'use_header_filler', 'bar_width', 'color', 'single_line',
+    'extra_top_padding_when_activated', 'extra_bottom_padding_when_activated',
+    'extra_left_padding_when_activated', 'extra_right_padding_when_activated',
+    'extra_top_margin_when_activated', 'extra_bottom_margin_when_activated',
+    'extra_left_margin_when_activated', 'extra_right_margin_when_activated',
+    'stretch_image_to_widget_size', 'badge_font', 'badge_horizontal_spacing',
+    'default_badge_font_color', 'selected_badge_font_color',
+    'disabled_badge_font_color', 'width', 'height', 'size', 'padding', 'margin',
+    'cell_padding', 'extra_padding_when_activated', 'extra_margin_when_activated' }
 
 M.vstyle.PROTOTYPE = {
     __setup = function(self)
@@ -96,7 +96,7 @@ M.vstyle.PROTOTYPE = {
 
         rawset(self, '__property_execution_list', property_execution_list)
     end,
-    __update_ui = function(self)
+    __update = function(self)
         if self.__property_execution_list then
             for _, execution in ipairs(self.__property_execution_list) do
                 if execution:dirty() then
@@ -120,6 +120,7 @@ end
 -- #endregion
 
 -- #region execution
+-- TODO: 考虑改名字叫 Updater
 M.execution = {}
 
 M.execution.create = function(process, dirty, dispose, tag)
@@ -239,6 +240,8 @@ M.vnode.ELEMENT_TYPE_MAP = {
     tab = true,
     switch = true
 }
+
+M.vnode.VNODE_TYPE_VIRTUAL = 'virtual'
 
 M.vnode.ELEMENT_PROPERTY_DEFINITION = {
     allow_decimal = {
@@ -523,7 +526,6 @@ M.vnode.element_key_to_vnode_map = {}
 
 M.vnode.get_element_key = function(element)
     return string.format('%d_%d', element.player_index, element.index)
-
 end
 
 M.vnode.get_vnode_by_element = function(element)
@@ -583,15 +585,26 @@ M.vnode.PROTOTYPE = {
 
         self.__child_vnode_list = child_vnode_list
     end,
+    __get_effective_vnode_list = function(self)
+        local effective_vnode_list = {}
+
+        -- 虚节点并不起实质性的作用，所以需要把虚节点下的起作用的节点加上
+        if self.type == M.vnode.VNODE_TYPE_VIRTUAL then
+            for _, effective_child_vnode in ipairs(self:__get_effective_child_vnode_list()) do
+                table.insert(effective_vnode_list, effective_child_vnode)
+            end
+        else
+            table.insert(effective_vnode_list, self)
+        end
+
+        return effective_vnode_list
+    end,
     __get_effective_child_vnode_list = function(self)
         local effective_vnode_list = {}
 
         for _, child_vnode in ipairs(self.__child_vnode_list) do
-            if child_vnode.type ~= 'virtual' then
-                table.insert(effective_vnode_list, child_vnode)
-            end
-            for _, efffective_child_vnode in ipairs(child_vnode:__get_effective_child_vnode_list()) do
-                table.insert(effective_vnode_list, efffective_child_vnode)
+            for _, effective_child_vnode in ipairs(child_vnode:__get_effective_vnode_list()) do
+                table.insert(effective_vnode_list, effective_child_vnode)
             end
         end
 
@@ -607,6 +620,52 @@ M.vnode.PROTOTYPE = {
         end)
         -- TODO: 思考一下这里的脏标志是否还有一定的作用
         return responsive.binding.create(computed, 'effective_child_vnode_list')
+    end,
+    __process_effective_child_vnode_list = function(self, child_vnode_list)
+        rawset(self, '__effective_child_vnode_list', child_vnode_list)
+
+        for _, vnode in ipairs(child_vnode_list) do
+            if vnode.__stage == M.vnode.STAGE.SETUP then
+                vnode:__setup()
+            end
+        end
+        for _, vnode in ipairs(child_vnode_list) do
+            if vnode.__stage == M.vnode.STAGE.MOUNT then
+                vnode:__mount(self.__element.add({
+                    type = vnode.type,
+                    tags = {}
+                }))
+            end
+        end
+
+        local vnode_map = {}
+        for _, vnode in ipairs(child_vnode_list) do
+            vnode_map[vnode.__id] = true
+        end
+
+        for _, element in ipairs(self.__element.children) do
+            local vnode = M.vnode.get_vnode_by_element(element)
+
+            if not vnode_map[vnode.__id] then
+                vnode:__unmount()
+                vnode:__dispose()
+                element.destroy()
+            end
+        end
+
+        -- TODO: 添加测试用例
+        for index = 1, #self.__element.children do
+            local element = self.__element.children[index]
+            local vnode = child_vnode_list[index]
+
+            if M.vnode.get_vnode_by_element(element) ~= vnode then
+                for index2 = index + 1, #self.__element.children do
+                    if self.__element.children[index2] == vnode then
+                        self.__element.swap_children(index, index2)
+                    end
+                end
+            end
+        end
     end,
     -- #endregion
 
@@ -629,7 +688,6 @@ M.vnode.PROTOTYPE = {
             self:__invoke_event_handler('confirmed', event)
         end
     end,
-
     __invoke_event_handler = function(self, name, event)
         if self.__template['@' .. name] then
             local func = load('return ' .. self.__template['@' .. name], nil, 't', responsive.unref(self.__data))()
@@ -698,6 +756,9 @@ M.vnode.PROTOTYPE = {
                     table.insert(property_execution_list, execution)
                 end
             end
+        elseif self.type == M.vnode.VNODE_TYPE_VIRTUAL then
+        else
+            error('unknown type: ' .. self.type)
         end
 
         rawset(self, '__property_execution_list', property_execution_list)
@@ -712,57 +773,18 @@ M.vnode.PROTOTYPE = {
         self.__style:__setup()
         rawset(self, '__effective_child_vnode_list_execution',
             M.execution
-                .create_value_execution(self:__get_effective_child_vnode_list_binding(), function(execution, vnode_list)
-                rawset(self, '__effective_child_vnode_list', vnode_list)
-
-                for _, vnode in ipairs(vnode_list) do
-                    if vnode.__stage == M.vnode.STAGE.SETUP then
-                        vnode:__setup()
-                    end
-                end
-                for _, vnode in ipairs(vnode_list) do
-                    if vnode.__stage == M.vnode.STAGE.MOUNT then
-                        vnode:__mount(self.__element.add({
-                            type = vnode.type,
-                            tags = {}
-                        }))
-                    end
-                end
-
-                local vnode_map = {}
-                for _, vnode in ipairs(vnode_list) do
-                    vnode_map[vnode.__id] = true
-                end
-
-                for _, element in ipairs(self.__element.children) do
-                    local vnode = M.vnode.get_vnode_by_element(element)
-
-                    if not vnode_map[vnode.__id] then
-                        vnode:__unmount()
-                        vnode:__dispose()
-                        element.destroy()
-                    end
-                end
-
-                -- TODO: 添加测试用例
-                for index = 1, #self.__element.children do
-                    local element = self.__element.children[index]
-                    local vnode = vnode_list[index]
-
-                    if M.vnode.get_vnode_by_element(element) ~= vnode then
-                        for index2 = index + 1, #self.__element.children do
-                            if self.__element.children[index2] == vnode then
-                                self.__element.swap_children(index, index2)
-                            end
-                        end
-                    end
-                end
-            end))
-
+            .create_value_execution(self:__get_effective_child_vnode_list_binding(),
+                function(execution, child_vnode_list)
+                    self:__process_effective_child_vnode_list(child_vnode_list)
+                end))
         self.__disposer:add(function()
             self.__effective_child_vnode_list_execution:dispose()
         end)
-        rawset(self, '__stage', M.vnode.STAGE.MOUNT)
+        if self.type == M.vnode.VNODE_TYPE_VIRTUAL then
+            rawset(self, '__stage', M.vnode.STAGE.UPDATE)
+        else
+            rawset(self, '__stage', M.vnode.STAGE.MOUNT)
+        end
     end,
     __mount = function(self, element)
         log:trace(string.format('call mount, vnode: %s, element: %d', self.__id, (element or {}).index))
@@ -777,7 +799,10 @@ M.vnode.PROTOTYPE = {
         M.vnode.element_key_to_vnode_map[M.vnode.get_element_key(element)] = self
         rawset(self, '__stage', M.vnode.STAGE.UPDATE)
     end,
-    __update_ui = function(self)
+    __update = function(self)
+        if self.type == M.vnode.VNODE_TYPE_VIRTUAL then
+            error('virtual vnode cannot be updated')
+        end
         log:trace(string.format('call update_ui, vnode: %s', self.__id))
         if self.__stage ~= M.vnode.STAGE.UPDATE then
             error('wrong stage, stage: ' .. self.__stage)
@@ -789,14 +814,14 @@ M.vnode.PROTOTYPE = {
                 end
             end
         end
-        self.__style:__update_ui()
+        self.__style:__update()
         if self.__effective_child_vnode_list_execution:dirty() then
             self.__effective_child_vnode_list_execution:process()
         end
 
         if self.__effective_child_vnode_list then
             for _, vnode in ipairs(self.__effective_child_vnode_list) do
-                vnode:__update_ui()
+                vnode:__update()
             end
         end
     end,
@@ -847,6 +872,40 @@ M.vnode.create = function(definition)
     end)
 
     return vnode
+end
+-- #endregion
+
+-- #region component
+M.component = {}
+
+M.component.component_factory_map = {}
+
+M.component.factory = {}
+
+M.component.factory.METATABLE = {
+    __type = 'kcomponent_factory'
+}
+
+M.component.factory.PROTOTYPE = {
+    create = function(self, context)
+        return self.__creation_function(context)
+    end
+}
+
+setmetatable(M.component.factory.PROTOTYPE, M.component.factory.METATABLE)
+
+M.component.get_factory = function(name)
+    return M.component.component_factory_map[name]
+end
+
+M.component.register = function(name, creation_function)
+    if M.component.component_factory_map[name] then
+        error('component already exists, name: ' .. name)
+    end
+    M.component.component_factory_map[name] = tools.inherit_prototype(M.component.PROTOTYPE, {
+        __id = unique_id.generate('component'),
+        __creation_function = creation_function
+    })
 end
 -- #endregion
 

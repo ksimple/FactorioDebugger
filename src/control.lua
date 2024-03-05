@@ -31,7 +31,7 @@ local PLAYER_UI = {}
 
 local function update_ui(player_index)
     for _, ui in pairs(PLAYER_UI[player_index]) do
-        ui.vnode:__update_ui()
+        ui.vnode:__update()
     end
 end
 

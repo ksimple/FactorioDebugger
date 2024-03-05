@@ -75,7 +75,7 @@ end
 
 M.responsive_global_notifier = M.notifier.create()
 
--- TODO: 把这些函数放到挪到一个命名空间里面去
+-- #region module functions
 M.is_ref = function(t)
     local metatable = getmetatable(t)
     return metatable == M.ref.METATABLE or metatable == M.computed.METATABLE
@@ -97,13 +97,13 @@ M.setref = function(ref, value)
     else
         return value
     end
-
 end
 
 M.is_reactive = function(t)
     local metatable = getmetatable(t)
     return metatable == M.ref.METATABLE or metatable == M.computed.METATABLE or metatable == M.reactive.METATABLE
 end
+-- #endregion
 
 -- #region ref
 M.ref = {}
@@ -275,6 +275,10 @@ M.reactive.create = function(raw_table)
         __raw_table = raw_table
     })
 end
+-- #endregion
+
+-- #region reactive_proxy
+-- TODO: 增加逻辑
 -- #endregion
 
 -- #region watch
@@ -468,6 +472,7 @@ end
 -- #endregion
 
 -- #region execution
+-- TODO: 删除这部分代码，不再需要了
 M.execution = {}
 
 M.execution.create = function(process, dirty, dispose, tag)

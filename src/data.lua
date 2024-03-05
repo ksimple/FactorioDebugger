@@ -30,4 +30,5 @@ function init_shorcuts(data)
     }})
 end
 
+---@diagnostic disable-next-line: undefined-global
 init_shorcuts(data)

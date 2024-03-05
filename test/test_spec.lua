@@ -936,7 +936,7 @@ describe('ui', function()
 
             vnode:__setup()
             vnode:__mount(element)
-            vnode:__update_ui()
+            vnode:__update()
 
             log:debug(element)
             assert(element.caption == 'test')
@@ -979,7 +979,7 @@ describe('ui', function()
 
             vnode:__setup()
             vnode:__mount(element)
-            vnode:__update_ui()
+            vnode:__update()
 
             log:debug(element)
             assert(element.caption == 'test1')
@@ -987,15 +987,15 @@ describe('ui', function()
             data.property1 = 'test1_changed1'
             assert(element.caption == 'test1')
 
-            vnode:__update_ui()
+            vnode:__update()
             assert(element.caption == 'test1_changed1')
 
             data.property1 = 'test1_changed2'
-            vnode:__update_ui()
+            vnode:__update()
             assert(element.caption == 'test1_changed2')
 
             data.property1 = 'test1_changed3'
-            vnode:__update_ui()
+            vnode:__update()
             assert(element.caption == 'test1_changed3')
         end)
         it('invoke event handler', function()
@@ -1021,7 +1021,7 @@ describe('ui', function()
 
             vnode:__setup()
             vnode:__mount(element)
-            vnode:__update_ui()
+            vnode:__update()
 
             log:debug(element)
             vnode:__invoke_event_handler('click', 'event')
@@ -1061,7 +1061,7 @@ describe('ui', function()
 
                 vnode:__setup()
                 vnode:__mount(element)
-                vnode:__update_ui()
+                vnode:__update()
 
                 log:debug(helper.clone_table(element, helper.drop_vnode_ref))
                 assert(#element.children == 2)
@@ -1107,7 +1107,7 @@ describe('ui', function()
 
                 vnode:__setup()
                 vnode:__mount(element)
-                vnode:__update_ui()
+                vnode:__update()
 
                 data.property1 = 'test1_changed1'
                 data.property2.property3 = 'test3_changed1'
@@ -1118,7 +1118,7 @@ describe('ui', function()
                 assert(element.children[2].caption == 'test1')
                 assert(element.children[3].caption == 'test3')
 
-                vnode:__update_ui()
+                vnode:__update()
                 log:debug(helper.clone_table(element, helper.drop_vnode_ref))
                 assert(element.children[1].caption == 'test1_changed1')
                 assert(element.children[2].caption == 'test1_changed1')
@@ -1126,7 +1126,7 @@ describe('ui', function()
 
                 data.property1 = 'test1_changed2'
                 data.property2.property3 = 'test3_changed2'
-                vnode:__update_ui()
+                vnode:__update()
                 log:debug(helper.clone_table(element, helper.drop_vnode_ref))
                 assert(element.children[1].caption == 'test1_changed2')
                 assert(element.children[2].caption == 'test1_changed2')
@@ -1134,7 +1134,7 @@ describe('ui', function()
 
                 data.property1 = 'test1_changed3'
                 data.property2.property3 = 'test3_changed3'
-                vnode:__update_ui()
+                vnode:__update()
                 log:debug(helper.clone_table(element, helper.drop_vnode_ref))
                 assert(element.children[1].caption == 'test1_changed3')
                 assert(element.children[2].caption == 'test1_changed3')
@@ -1163,7 +1163,7 @@ describe('ui', function()
 
             vnode:__setup()
             vnode:__mount(element)
-            vnode:__update_ui()
+            vnode:__update()
 
             log:debug(element)
             assert(element.style.width == 400)
@@ -1190,7 +1190,7 @@ describe('ui', function()
 
             vnode:__setup()
             vnode:__mount(element)
-            vnode:__update_ui()
+            vnode:__update()
 
             log:debug(element)
             assert(element.style.width == 400)
@@ -1198,7 +1198,7 @@ describe('ui', function()
             data.width = 500
             assert(element.style.width == 400)
 
-            vnode:__update_ui()
+            vnode:__update()
 
             log:debug(element)
             assert(element.style.width == 500)
