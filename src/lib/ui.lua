@@ -216,32 +216,6 @@ M.vnode.METATABLE = {
     end
 }
 
-M.vnode.ELEMENT_TYPE_MAP = {
-    frame = true,
-    button = true,
-    -- TODO: 应该分成两个分别支持横向和竖向
-    flow = true,
-    ['v-flow'] = true,
-    table = true,
-    textfield = true,
-    progressbar = true,
-    checkbox = true,
-    radiobutton = true,
-    ['sprite-button'] = true,
-    sprite = true,
-    ['scroll-pane'] = true,
-    ['drop-down'] = true,
-    line = true,
-    ['list-box'] = true,
-    camera = true,
-    ['choose-elem-button'] = true,
-    ['text-box'] = true,
-    slider = true,
-    minimap = true,
-    tab = true,
-    switch = true
-}
-
 M.vnode.VNODE_TYPE_VIRTUAL = 'virtual'
 
 M.vnode.ELEMENT_PROPERTY_DEFINITION = {
@@ -537,12 +511,33 @@ end
 
 M.vnode.PROTOTYPE = {
     __disposed = false,
-    -- #region special properties processing
+    __template = nil,
     __get_type = function(self)
-        return self.__template.type
+        return self.__template and self.__template.type or nil
     end,
-    -- #endregion
+    __get_effective_vnode_list = function(self)
+        error('not implemented')
+    end,
+    __setup = function(self)
+        error('not implemented')
+    end,
+    __mount = function(self, element)
+        error('not implemented')
+    end,
+    __update = function(self)
+        error('not implemented')
+    end,
+    __unmount = function(self)
+        error('not implemented')
+    end,
+    __dispose = function(self)
+        error('not implemented')
+    end
+}
 
+setmetatable(M.vnode.PROTOTYPE, M.vnode.METATABLE)
+
+M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
     -- #region children processing
     __generate_child_vnode = function(self, child_template, old_vnode_list)
         if old_vnode_list then
@@ -587,18 +582,12 @@ M.vnode.PROTOTYPE = {
         self.__child_vnode_list = child_vnode_list
     end,
     __get_effective_vnode_list = function(self)
-        local effective_vnode_list = {}
-
         -- 虚节点并不起实质性的作用，所以需要把虚节点下的起作用的节点加上
         if self.type == M.vnode.VNODE_TYPE_VIRTUAL then
-            for _, effective_child_vnode in ipairs(self:__get_effective_child_vnode_list()) do
-                table.insert(effective_vnode_list, effective_child_vnode)
-            end
+            return self:__get_effective_child_vnode_list()
         else
-            table.insert(effective_vnode_list, self)
+            return {self}
         end
-
-        return effective_vnode_list
     end,
     __get_effective_child_vnode_list = function(self)
         local effective_vnode_list = {}
@@ -622,6 +611,18 @@ M.vnode.PROTOTYPE = {
         -- TODO: 思考一下这里的脏标志是否还有一定的作用
         return responsive.binding.create(computed, 'effective_child_vnode_list')
     end,
+    __create_element = function(self)
+        if self.type == 'flow' or self.type == 'frame' then
+            return self.__parent_vnode.__element.add({
+                type = self.type,
+                direction = (not self.direction and self.direction == 'horizontal') and 'horizontal' or 'vertical'
+            })
+        else
+            return self.__parent_vnode.__element.add({
+                type = self.type
+            })
+        end
+    end,
     __process_effective_child_vnode_list = function(self, child_vnode_list)
         rawset(self, '__effective_child_vnode_list', child_vnode_list)
 
@@ -632,18 +633,7 @@ M.vnode.PROTOTYPE = {
         end
         for _, vnode in ipairs(child_vnode_list) do
             if vnode.__stage == M.vnode.STAGE.MOUNT then
-                if vnode.type == 'v-flow' then
-                    vnode:__mount(self.__element.add({
-                        type = 'flow',
-                        direction = 'vertical',
-                        tags = {}
-                    }))
-                else
-                    vnode:__mount(self.__element.add({
-                        type = vnode.type,
-                        tags = {}
-                    }))
-                end
+                vnode:__mount()
             end
         end
 
@@ -733,36 +723,38 @@ M.vnode.PROTOTYPE = {
 
         if M.vnode.ELEMENT_TYPE_MAP[self.type] then
             for name, definition in pairs(M.vnode.ELEMENT_PROPERTY_DEFINITION) do
-                -- TODO: 增加双向绑定的功能
-                -- TODO: 增加双向绑定的测试用例
-                if template[':' .. name] then
-                    -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
-                    local binding = responsive.binding.create(data, template[':' .. name], responsive.binding.MODE.PULL)
-                    local execution = M.execution.create_value_execution(binding, function(execution, value)
-                        log:trace('设置 ' .. name .. ': ' .. tostring(value))
-                        self[name] = value
-                    end)
+                if definition.write then
+                    -- TODO: 增加双向绑定的测试用例
+                    if template[':' .. name] then
+                        -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
+                        local binding = responsive.binding.create(data, template[':' .. name],
+                            responsive.binding.MODE.PULL)
+                        local execution = M.execution.create_value_execution(binding, function(execution, value)
+                            log:trace('设置 ' .. name .. ': ' .. tostring(value))
+                            self[name] = value
+                        end)
 
-                    table.insert(property_execution_list, execution)
-                elseif template['#' .. name] then
-                    -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
-                    local binding = responsive.binding.create(data, template['#' .. name],
-                        responsive.binding.MODE.PULL_AND_PUSH)
-                    local execution = M.execution.create_value_execution(binding, function(execution, value)
-                        log:trace('设置 ' .. name .. ': ' .. tostring(value))
-                        self[name] = value
-                    end)
+                        table.insert(property_execution_list, execution)
+                    elseif template['#' .. name] then
+                        -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
+                        local binding = responsive.binding.create(data, template['#' .. name],
+                            responsive.binding.MODE.PULL_AND_PUSH)
+                        local execution = M.execution.create_value_execution(binding, function(execution, value)
+                            log:trace('设置 ' .. name .. ': ' .. tostring(value))
+                            self[name] = value
+                        end)
 
-                    table.insert(property_execution_list, execution)
-                    property_binding_map[name] = binding
-                elseif template[name] ~= nil then
-                    -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
-                    local execution = M.execution.create_value_execution(template[name], function(execution, value)
-                        log:trace('设置 ' .. name .. ': ' .. tostring(value))
-                        self[name] = value
-                    end)
+                        table.insert(property_execution_list, execution)
+                        property_binding_map[name] = binding
+                    elseif template[name] ~= nil then
+                        -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
+                        local execution = M.execution.create_value_execution(template[name], function(execution, value)
+                            log:trace('设置 ' .. name .. ': ' .. tostring(value))
+                            self[name] = value
+                        end)
 
-                    table.insert(property_execution_list, execution)
+                        table.insert(property_execution_list, execution)
+                    end
                 end
             end
         elseif self.type == M.vnode.VNODE_TYPE_VIRTUAL then
@@ -797,12 +789,14 @@ M.vnode.PROTOTYPE = {
         end
     end,
     __mount = function(self, element)
-        log:trace(string.format('call mount, vnode: %s, element: %d', self.__id, (element or {}).index))
+        log:trace(string.format('call mount, vnode: %s, element: %d', self.__id, (element or {
+            index = -1
+        }).index))
         if self.__stage ~= M.vnode.STAGE.MOUNT then
             error('wrong stage, stage: ' .. self.__stage)
         end
         if not element then
-            error('element cannot be nil')
+            element = self:__create_element()
         end
 
         rawset(self, '__element', element)
@@ -849,8 +843,94 @@ M.vnode.PROTOTYPE = {
         rawset(self, '__stage', M.vnode.STAGE.UPDATE)
     end
     -- #endregion
+})
+
+M.vnode.ELEMENT_TYPE_MAP = {
+    frame = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    button = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    flow = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    table = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    textfield = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    progressbar = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    checkbox = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    radiobutton = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    ['sprite-button'] = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    sprite = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    ['scroll-pane'] = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    ['drop-down'] = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    line = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    ['list-box'] = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    camera = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    ['choose-elem-button'] = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    ['text-box'] = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    slider = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    minimap = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    tab = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    },
+    switch = {
+        prototype = M.vnode.ELEMENT_PROTOTYPE,
+        vstyle = true
+    }
 }
-setmetatable(M.vnode.PROTOTYPE, M.vnode.METATABLE)
 
 M.vnode.create = function(definition)
     local template = definition.template
@@ -861,7 +941,7 @@ M.vnode.create = function(definition)
 
     local data = definition.data
     local parent_vnode = definition.parent
-    local vnode = tools.inherit_prototype(M.vnode.PROTOTYPE, {
+    local vnode = tools.inherit_prototype(M.vnode.ELEMENT_TYPE_MAP[template.type].prototype, {
         __id = unique_id.generate('vnode'),
         __definition = definition,
         __template = template,
@@ -875,7 +955,9 @@ M.vnode.create = function(definition)
         __disposer = tools.disposer.create()
     })
 
-    rawset(vnode, '__style', M.vstyle.create(vnode))
+    if M.vnode.ELEMENT_TYPE_MAP[template.type].vstyle then
+        rawset(vnode, '__style', M.vstyle.create(vnode))
+    end
 
     vnode.__disposer:add(function()
         vnode.__style:dispose()

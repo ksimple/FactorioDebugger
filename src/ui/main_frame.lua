@@ -32,7 +32,8 @@ M.build = function(parent)
                 height = 400
             },
             children = {{
-                type = 'v-flow',
+                type = 'flow',
+                direction = 'vertical',
                 children = {{
                     type = 'v-flow',
                     children = {{

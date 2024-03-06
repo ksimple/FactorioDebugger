@@ -1,6 +1,6 @@
 local current_file_path = debug.getinfo(1).source:sub(2) -- 去掉路径前面的 '@'
 print(current_file_path)
-local path_separator = package.config:sub(1, 1) -- 获取路径分隔符，Windows 是 '\'，Unix 是 '/'
+local path_separator = package.config:sub(1, 1)          -- 获取路径分隔符，Windows 是 '\'，Unix 是 '/'
 local parent_dir = current_file_path:match('(.*' .. path_separator .. ').*' .. path_separator)
 
 package.path = package.path .. ';' .. parent_dir .. 'src/?.lua' .. ';' .. parent_dir .. 'test/?.lua'
@@ -610,7 +610,7 @@ describe('responsive', function()
             watch:add_listener(responsive.EVENT.PROPERTY_CHANGED, function(sender, event, name, old_value, new_value)
                 table.insert(log_list,
                     sender.__id .. ' ' .. event .. ' ' .. name .. ' ' .. tostring(old_value) .. ' ' ..
-                        tostring(new_value))
+                    tostring(new_value))
             end)
             watch:record()
             local property1 = reactive.property1
@@ -739,6 +739,7 @@ describe('responsive', function()
         end)
     end)
 end)
+
 describe('ui', function()
     describe('execution', function()
         it('one binding', function()
@@ -788,7 +789,7 @@ describe('ui', function()
             })
             local log_list = {}
             local binding = responsive.binding
-                                .create(data, 'property2.property3', responsive.binding.MODE.PULL_AND_PUSH)
+                .create(data, 'property2.property3', responsive.binding.MODE.PULL_AND_PUSH)
             local execution = ui.execution.create_value_execution(binding, function(execution, value)
                 table.insert(log_list, 'process property2.property3 ' .. value)
             end)
@@ -804,6 +805,66 @@ describe('ui', function()
         end)
         it('dispose', function()
             -- TODO: 添加逻辑
+        end)
+    end)
+
+    describe('vstyle', function()
+        it('const value', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+
+            local element = helper.create_gui_element('frame')
+            local vnode = ui.vnode.create({
+                template = {
+                    type = 'frame',
+                    style = {
+                        width = 400,
+                        height = 500
+                    }
+                }
+            })
+
+            vnode:__setup()
+            vnode:__mount(element)
+            vnode:__update()
+
+            log:debug(element)
+            assert(element.style.width == 400)
+            assert(element.style.height == 500)
+        end)
+        it('pull binding', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+            local responsive = require('lib.responsive')
+
+            local element = helper.create_gui_element('frame')
+            local data = responsive.reactive.create({
+                width = 400
+            })
+            local vnode = ui.vnode.create({
+                template = {
+                    type = 'frame',
+                    style = {
+                        [':width'] = 'width'
+                    }
+                },
+                data = data
+            })
+
+            vnode:__setup()
+            vnode:__mount(element)
+            vnode:__update()
+
+            log:debug(element)
+            assert(element.style.width == 400)
+
+            data.width = 500
+            assert(element.style.width == 400)
+
+            vnode:__update()
+
+            log:debug(element)
+            assert(element.style.width == 500)
         end)
     end)
 
@@ -950,13 +1011,13 @@ describe('ui', function()
                     template = {
                         type = 'frame',
                         [':caption'] = 'property1',
-                        children = {{
+                        children = { {
                             type = 'button',
                             [':caption'] = 'property1'
                         }, {
                             type = 'checkbox',
                             [':caption'] = 'property2.property3'
-                        }}
+                        } }
                     },
                     data = data
                 })
@@ -993,7 +1054,7 @@ describe('ui', function()
                     template = {
                         type = 'frame',
                         [':caption'] = 'property1',
-                        children = {{
+                        children = { {
                             type = 'button',
                             [':caption'] = 'property1'
                         }, {
@@ -1002,7 +1063,7 @@ describe('ui', function()
                         }, {
                             type = 'checkbox',
                             [':caption'] = 'property2.property3'
-                        }}
+                        } }
                     },
                     data = data
                 })
@@ -1047,63 +1108,8 @@ describe('ui', function()
             -- TODO: 添加逻辑
         end)
     end)
-    describe('vstyle', function()
-        it('const value', function()
-            local helper = require('helper')
-            local ui = require('lib.ui')
 
-            local element = helper.create_gui_element('frame')
-            local vnode = ui.vnode.create({
-                template = {
-                    type = 'frame',
-                    style = {
-                        width = 400,
-                        height = 500
-                    }
-                }
-            })
-
-            vnode:__setup()
-            vnode:__mount(element)
-            vnode:__update()
-
-            log:debug(element)
-            assert(element.style.width == 400)
-            assert(element.style.height == 500)
-        end)
-        it('pull binding', function()
-            local helper = require('helper')
-            local ui = require('lib.ui')
-            local responsive = require('lib.responsive')
-
-            local element = helper.create_gui_element('frame')
-            local data = responsive.reactive.create({
-                width = 400
-            })
-            local vnode = ui.vnode.create({
-                template = {
-                    type = 'frame',
-                    style = {
-                        [':width'] = 'width'
-                    }
-                },
-                data = data
-            })
-
-            vnode:__setup()
-            vnode:__mount(element)
-            vnode:__update()
-
-            log:debug(element)
-            assert(element.style.width == 400)
-
-            data.width = 500
-            assert(element.style.width == 400)
-
-            vnode:__update()
-
-            log:debug(element)
-            assert(element.style.width == 500)
-        end)
+    describe('component', function()
+        -- TODO: 增加测试用例
     end)
 end)
