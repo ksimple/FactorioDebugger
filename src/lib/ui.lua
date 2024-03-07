@@ -516,6 +516,13 @@ M.vnode.PROTOTYPE = {
     __get_type = function(self)
         return self.__template and self.__template.type or nil
     end,
+    __get_parent_element = function(self)
+        if self.__parent_vnode.__element then
+            return self.__parent_vnode.__element
+        else
+            return self.__parent_vnode:__get_parent_element()
+        end
+    end,
     __get_effective_vnode_list = function(self)
         error('not implemented')
     end,
@@ -564,13 +571,6 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
             data = {self}
         }, 'data', responsive.binding.MODE.ONE_TIME)
     end,
-    __get_parent_element = function(self)
-        if self.__parent_vnode.__element then
-            return self.__parent_vnode.__element
-        else
-            return self.__parent_vnode.__get_parent_element()
-        end
-    end,
     __create_element = function(self)
         local parent_element = self:__get_parent_element()
         if self.type == 'flow' or self.type == 'frame' then
@@ -613,7 +613,6 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
             end
         end
 
-        -- TODO: 添加测试用例
         for index = 1, #self.__element.children do
             local element = self.__element.children[index]
             local vnode = effective_child_vnode_list[index]
@@ -744,8 +743,9 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
             table.insert(effective_child_vnode_execution_list,
                 M.execution.create_value_execution(child_vnode:__get_effective_vnode_list_binding(),
                     function(execution, effective_child_vnode_list)
-                        log:trace(string.format('effective_child_vnode_list changed, vnode: %s, index: %d', self.__id,
-                            child_vnode_index))
+                        log:trace(string.format(
+                            'effective_child_vnode_list changed, vnode: %s, index: %d, #effective_child_vnode_list: %d',
+                            self.__id, child_vnode_index, #effective_child_vnode_list))
                         self.__effective_child_vnode_list[child_vnode_index] = effective_child_vnode_list
                     end))
         end
@@ -843,25 +843,31 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
     -- #endregion
 })
 
--- TODO: 支持子模板
 M.vnode.COMPONENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
     -- #region children processing
     __child_template_root_vnode = nil,
     __ensure_child_vnode_list = function(self)
+        local component_factory = M.component.get_factory():get_component_factory(self.__template.name)
+        local data
+        if self.__template[':data'] then
+            data = responsive.computed.create(load('return ' .. self.__template[':data'], nil, 't',
+                responsive.unref(self.__data)))
+        elseif self.__template.data then
+            data = self.__template.data
+        else
+            data = {}
+        end
+        rawset(self, '__child_template_root_vnode', component_factory:get({
+            parent = self,
+            data = data
+        }))
     end,
     __get_effective_vnode_list_binding = function(self)
-        local computed = responsive.computed.create(function()
-            local func
-            if self.__template[':data'] then
-                func = load('return ' .. self.__template[':data'], nil, 't', responsive.unref(self.__data))
-            elseif self.__template.data then
-                func = function ()
-                    return {}
-                end
-            end
-        end)
+        log:trace(string.format('call get_effective_vnode_list_binding, vnode: %s', self.__id))
+        self:__ensure_child_vnode_list()
+
         return responsive.binding.create({
-            data = self.__child_template_root_vnode:__get_effective_vnode_list_binding()
+            data = {self.__child_template_root_vnode}
         }, 'data', responsive.binding.MODE.ONE_TIME)
     end,
     -- #endregion
@@ -1023,7 +1029,7 @@ end
 -- #region component
 M.component = {}
 
-M.component.component_factory_map = {}
+M.component.__component_factory_map = {}
 
 M.component.factory = {}
 
@@ -1039,21 +1045,22 @@ M.component.factory.PROTOTYPE = {
 
 setmetatable(M.component.factory.PROTOTYPE, M.component.factory.METATABLE)
 
-M.component.get_global_factory = function()
+M.component.get_factory = function()
     return {
-        get_component_factory = function(name)
-            return M.component.component_factory_map[name]
+        get_component_factory = function(self, name)
+            return M.component.__component_factory_map[name]
         end
     }
 end
 
 M.component.register_component_factory = function(name, get)
-    if M.component.component_factory_map[name] then
+    if M.component.__component_factory_map[name] then
         error('component already exists, name: ' .. name)
     end
-    M.component.component_factory_map[name] = tools.inherit_prototype(M.component.PROTOTYPE, {
-        __id = unique_id.generate('component'),
-        __get = get
+    M.component.__component_factory_map[name] = tools.inherit_prototype(M.component.factory.PROTOTYPE, {
+        id = unique_id.generate('component'),
+        name = name,
+        get = get
     })
 end
 -- #endregion

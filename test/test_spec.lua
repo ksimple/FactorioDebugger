@@ -1,6 +1,6 @@
 local current_file_path = debug.getinfo(1).source:sub(2) -- 去掉路径前面的 '@'
 print(current_file_path)
-local path_separator = package.config:sub(1, 1)          -- 获取路径分隔符，Windows 是 '\'，Unix 是 '/'
+local path_separator = package.config:sub(1, 1) -- 获取路径分隔符，Windows 是 '\'，Unix 是 '/'
 local parent_dir = current_file_path:match('(.*' .. path_separator .. ').*' .. path_separator)
 
 package.path = package.path .. ';' .. parent_dir .. 'src/?.lua' .. ';' .. parent_dir .. 'test/?.lua'
@@ -610,7 +610,7 @@ describe('responsive', function()
             watch:add_listener(responsive.EVENT.PROPERTY_CHANGED, function(sender, event, name, old_value, new_value)
                 table.insert(log_list,
                     sender.__id .. ' ' .. event .. ' ' .. name .. ' ' .. tostring(old_value) .. ' ' ..
-                    tostring(new_value))
+                        tostring(new_value))
             end)
             watch:record()
             local property1 = reactive.property1
@@ -789,7 +789,7 @@ describe('ui', function()
             })
             local log_list = {}
             local binding = responsive.binding
-                .create(data, 'property2.property3', responsive.binding.MODE.PULL_AND_PUSH)
+                                .create(data, 'property2.property3', responsive.binding.MODE.PULL_AND_PUSH)
             local execution = ui.execution.create_value_execution(binding, function(execution, value)
                 table.insert(log_list, 'process property2.property3 ' .. value)
             end)
@@ -1011,13 +1011,13 @@ describe('ui', function()
                     template = {
                         type = 'frame',
                         [':caption'] = 'property1',
-                        children = { {
+                        children = {{
                             type = 'button',
                             [':caption'] = 'property1'
                         }, {
                             type = 'checkbox',
                             [':caption'] = 'property2.property3'
-                        } }
+                        }}
                     },
                     data = data
                 })
@@ -1054,7 +1054,7 @@ describe('ui', function()
                     template = {
                         type = 'frame',
                         [':caption'] = 'property1',
-                        children = { {
+                        children = {{
                             type = 'button',
                             [':caption'] = 'property1'
                         }, {
@@ -1063,7 +1063,7 @@ describe('ui', function()
                         }, {
                             type = 'checkbox',
                             [':caption'] = 'property2.property3'
-                        } }
+                        }}
                     },
                     data = data
                 })
@@ -1103,6 +1103,187 @@ describe('ui', function()
                 assert(element.children[2].caption == 'test1_changed3')
                 assert(element.children[3].caption == 'test3_changed3')
             end)
+            it('child component', function()
+                local helper = require('helper')
+                local ui = require('lib.ui')
+
+                local element = helper.create_gui_element('frame')
+                helper.clear_component_factory()
+                ui.component.register_component_factory('child_component', function(self, definition)
+                    return ui.vnode.create({
+                        template = {
+                            type = 'button',
+                            caption = 'test'
+                        },
+                        parent = definition.parent,
+                        data = definition.data
+                    })
+                end)
+                local vnode = ui.vnode.create({
+                    template = {
+                        type = 'frame',
+                        children = {{
+                            type = 'component',
+                            name = 'child_component'
+                        }, {
+                            type = 'component',
+                            name = 'child_component'
+                        }}
+                    }
+                })
+
+                vnode:__setup()
+                vnode:__mount(element)
+                vnode:__update()
+
+                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+                assert(#element.children == 2)
+                assert(element.children[1].caption == 'test')
+                assert(element.children[2].caption == 'test')
+            end)
+            it('child component with property binding', function()
+                local helper = require('helper')
+                local ui = require('lib.ui')
+                local responsive = require('lib.responsive')
+
+                local element = helper.create_gui_element('frame')
+                helper.clear_component_factory()
+                ui.component.register_component_factory('child_component', function(self, definition)
+                    return ui.vnode.create({
+                        template = {
+                            type = 'button',
+                            [':caption'] = 'caption'
+                        },
+                        parent = definition.parent,
+                        data = definition.data
+                    })
+                end)
+                local data = responsive.reactive.create({
+                    property1 = 'test1',
+                    property2 = {
+                        property3 = 'test3'
+                    }
+                })
+                local vnode = ui.vnode.create({
+                    template = {
+                        type = 'frame',
+                        [':caption'] = 'property1',
+                        children = {{
+                            type = 'component',
+                            name = 'child_component',
+                            data = {
+                                caption = 'test2'
+                            }
+                        }, {
+                            type = 'component',
+                            name = 'child_component',
+                            data = {
+                                caption = 'test3'
+                            }
+                        }}
+                    },
+                    data = data
+                })
+
+                vnode:__setup()
+                vnode:__mount(element)
+                vnode:__update()
+
+                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+                assert(element.caption == 'test1')
+                assert(#element.children == 2)
+                assert(element.children[1].caption == 'test2')
+                assert(element.children[2].caption == 'test3')
+            end)
+            it('child component with data binding', function()
+                local helper = require('helper')
+                local ui = require('lib.ui')
+                local responsive = require('lib.responsive')
+
+                local element = helper.create_gui_element('frame')
+                helper.clear_component_factory()
+                ui.component.register_component_factory('child_component', function(self, definition)
+                    return ui.vnode.create({
+                        template = {
+                            type = 'button',
+                            [':caption'] = 'caption'
+                        },
+                        parent = definition.parent,
+                        data = definition.data
+                    })
+                end)
+                local data = responsive.reactive.create({
+                    property1 = 'test1',
+                    property2 = {
+                        caption = 'test2'
+                    },
+                    property3 = {
+                        caption = 'test3'
+                    }
+                })
+                local vnode = ui.vnode.create({
+                    template = {
+                        type = 'frame',
+                        [':caption'] = 'property1',
+                        children = {{
+                            type = 'component',
+                            name = 'child_component',
+                            [':data'] = 'property2'
+                        }, {
+                            type = 'component',
+                            name = 'child_component',
+                            [':data'] = 'property3'
+                        }}
+                    },
+                    data = data
+                })
+
+                vnode:__setup()
+                vnode:__mount(element)
+                vnode:__update()
+
+                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+                assert(element.caption == 'test1')
+                assert(#element.children == 2)
+                assert(element.children[1].caption == 'test2')
+                assert(element.children[2].caption == 'test3')
+
+                data.property2.caption = 'test2_changed'
+                data.property3.caption = 'test3_changed'
+
+                assert(element.caption == 'test1')
+                assert(#element.children == 2)
+                assert(element.children[1].caption == 'test2')
+                assert(element.children[2].caption == 'test3')
+
+                vnode:__update()
+
+                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+                assert(element.caption == 'test1')
+                assert(#element.children == 2)
+                assert(element.children[1].caption == 'test2_changed')
+                assert(element.children[2].caption == 'test3_changed')
+
+                data.property2 = {
+                    caption = 'test2_changed2'
+                }
+                data.property3 = {
+                    caption = 'test3_changed2'
+                }
+
+                assert(element.caption == 'test1')
+                assert(#element.children == 2)
+                assert(element.children[1].caption == 'test2_changed')
+                assert(element.children[2].caption == 'test3_changed')
+
+                vnode:__update()
+
+                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+                assert(element.caption == 'test1')
+                assert(#element.children == 2)
+                assert(element.children[1].caption == 'test2_changed2')
+                assert(element.children[2].caption == 'test3_changed2')
+            end)
         end)
         it('dispose', function()
             -- TODO: 添加逻辑
@@ -1110,6 +1291,20 @@ describe('ui', function()
     end)
 
     describe('component', function()
-        -- TODO: 增加测试用例
+        it('register and get', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+
+            local component_get = function()
+                return 'test_component'
+            end
+
+            ui.component.register_component_factory('test', component_get)
+
+            local component_factory = ui.component.get_factory():get_component_factory('test')
+
+            assert(component_factory.name == 'test')
+            assert(component_factory:get() == 'test_component')
+        end)
     end)
 end)

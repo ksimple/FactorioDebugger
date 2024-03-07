@@ -33,6 +33,12 @@ end
 
 M.set_global({})
 
+M.clear_component_factory = function()
+    local ui = require('lib.ui')
+
+    ui.component.__component_factory_map = {}
+end
+
 M.clone_table = function(t, process, process_context)
     local result = {}
     process_context = process_context or {}
@@ -56,6 +62,12 @@ end
 
 M.drop_vnode_ref = function(t, k, v, context)
     if k == '__k_vnode' then
+        return true, v
+    end
+    if type(v) == 'function' then
+        return true, v
+    end
+    if string.sub(k, 1, 2) == '__' then
         return true, v
     end
 
