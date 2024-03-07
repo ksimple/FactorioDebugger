@@ -178,7 +178,8 @@ M.vnode = {}
 M.vnode.STAGE = {
     SETUP = 'setup',
     MOUNT = 'mount',
-    UPDATE = 'update'
+    UPDATE = 'update',
+    DONE = 'done'
 }
 
 M.vnode.METATABLE = {
@@ -539,106 +540,66 @@ setmetatable(M.vnode.PROTOTYPE, M.vnode.METATABLE)
 
 M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
     -- #region children processing
-    __generate_child_vnode = function(self, child_template, old_vnode_list)
-        if old_vnode_list then
-            return old_vnode_list
+    __ensure_child_vnode_list = function(self)
+        if self.__child_vnode_list then
+            return
         end
 
-        -- TODO: 需要支持 v-if
-        -- TODO: 需要支持 v-for
-        -- local func
-        -- if child_template[':data'] then
-        --     func = load('return ' .. child_template[':data'], nil, 't', responsive.unref(self.__data))
-        -- elseif child_template.data then
-        --     func = function()
-        --         return child_template.data
-        --     end
-        -- else
-        --     func = function()
-        --         return {}
-        --     end
-        -- end
-        -- return M.vnode.create({
-        --     parent = self,
-        --     template = child_template,
-        --     data = responsive.computed.create(func)
-        -- })
-
-        return M.vnode.create({
-            parent = self,
-            template = child_template,
-            data = self.__data
-        })
-    end,
-    __refresh_child_vnode_list = function(self)
         local child_vnode_list = {}
 
         if (self.__template.children) then
             for index, child in ipairs(self.__template.children) do
-                child_vnode_list[index] = self:__generate_child_vnode(child, self.__child_vnode_list[index])
+                child_vnode_list[index] = M.vnode.create({
+                    parent = self,
+                    template = child,
+                    data = self.__data
+                })
             end
         end
 
-        self.__child_vnode_list = child_vnode_list
+        rawset(self, '__child_vnode_list', child_vnode_list)
     end,
-    __get_effective_vnode_list = function(self)
-        -- 虚节点并不起实质性的作用，所以需要把虚节点下的起作用的节点加上
-        if self.type == M.vnode.VNODE_TYPE_VIRTUAL then
-            return self:__get_effective_child_vnode_list()
+    __get_effective_vnode_list_binding = function(self)
+        return responsive.binding.create({
+            data = {self}
+        }, 'data', responsive.binding.MODE.ONE_TIME)
+    end,
+    __get_parent_element = function(self)
+        if self.__parent_vnode.__element then
+            return self.__parent_vnode.__element
         else
-            return {self}
+            return self.__parent_vnode.__get_parent_element()
         end
-    end,
-    __get_effective_child_vnode_list = function(self)
-        local effective_vnode_list = {}
-
-        for _, child_vnode in ipairs(self.__child_vnode_list) do
-            for _, effective_child_vnode in ipairs(child_vnode:__get_effective_vnode_list()) do
-                table.insert(effective_vnode_list, effective_child_vnode)
-            end
-        end
-
-        return effective_vnode_list
-    end,
-    __get_effective_child_vnode_list_binding = function(self)
-        -- TODO: 这个binding应该只处理一个子节点，这样可以减少更新的影响
-        local computed = responsive.computed.create(function()
-            self:__refresh_child_vnode_list()
-            return {
-                effective_child_vnode_list = self:__get_effective_child_vnode_list()
-            }
-        end)
-        -- TODO: 思考一下这里的脏标志是否还有一定的作用
-        return responsive.binding.create(computed, 'effective_child_vnode_list')
     end,
     __create_element = function(self)
+        local parent_element = self:__get_parent_element()
         if self.type == 'flow' or self.type == 'frame' then
-            return self.__parent_vnode.__element.add({
+            return parent_element.add({
                 type = self.type,
                 direction = (not self.direction and self.direction == 'horizontal') and 'horizontal' or 'vertical'
             })
         else
-            return self.__parent_vnode.__element.add({
+            return parent_element.add({
                 type = self.type
             })
         end
     end,
-    __process_effective_child_vnode_list = function(self, child_vnode_list)
-        rawset(self, '__effective_child_vnode_list', child_vnode_list)
-
-        for _, vnode in ipairs(child_vnode_list) do
+    __process_effective_child_vnode_list = function(self, effective_child_vnode_list)
+        log:trace(string.format('call process_effective_child_vnode_list, vnode: %s, #effective_child_vnode_list: %d',
+            self.__id, #effective_child_vnode_list))
+        for _, vnode in ipairs(effective_child_vnode_list) do
             if vnode.__stage == M.vnode.STAGE.SETUP then
                 vnode:__setup()
             end
         end
-        for _, vnode in ipairs(child_vnode_list) do
+        for _, vnode in ipairs(effective_child_vnode_list) do
             if vnode.__stage == M.vnode.STAGE.MOUNT then
                 vnode:__mount()
             end
         end
 
         local vnode_map = {}
-        for _, vnode in ipairs(child_vnode_list) do
+        for _, vnode in ipairs(effective_child_vnode_list) do
             vnode_map[vnode.__id] = true
         end
 
@@ -655,7 +616,7 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
         -- TODO: 添加测试用例
         for index = 1, #self.__element.children do
             local element = self.__element.children[index]
-            local vnode = child_vnode_list[index]
+            local vnode = effective_child_vnode_list[index]
 
             if M.vnode.get_vnode_by_element(element) ~= vnode then
                 for index2 = index + 1, #self.__element.children do
@@ -774,11 +735,41 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
         end)
 
         self.__style:__setup()
-        rawset(self, '__effective_child_vnode_list_execution',
-            M.execution.create_value_execution(self:__get_effective_child_vnode_list_binding(),
-                function(execution, child_vnode_list)
-                    self:__process_effective_child_vnode_list(child_vnode_list)
-                end))
+
+        self:__ensure_child_vnode_list()
+        local effective_child_vnode_execution_list = {}
+        rawset(self, '__effective_child_vnode_list', responsive.reactive.create({}))
+
+        for child_vnode_index, child_vnode in ipairs(self.__child_vnode_list) do
+            table.insert(effective_child_vnode_execution_list,
+                M.execution.create_value_execution(child_vnode:__get_effective_vnode_list_binding(),
+                    function(execution, effective_child_vnode_list)
+                        log:trace(string.format('effective_child_vnode_list changed, vnode: %s, index: %d', self.__id,
+                            child_vnode_index))
+                        self.__effective_child_vnode_list[child_vnode_index] = effective_child_vnode_list
+                    end))
+        end
+        rawset(self, '__effective_child_vnode_execution_list', effective_child_vnode_execution_list)
+        rawset(self, '__effective_child_vnode_execution', M.execution.create_value_execution(responsive.binding.create(
+            responsive.computed.create(function()
+                log:trace(string.format('effective_child_vnode_list pull, vnode: %s', self.__id))
+                local effective_child_vnode_flat_list = {}
+
+                for index = 1, #self.__child_vnode_list do
+                    if self.__effective_child_vnode_list[index] then
+                        for _, effective_child_vnode in ipairs(self.__effective_child_vnode_list[index]) do
+                            table.insert(effective_child_vnode_flat_list, effective_child_vnode)
+                        end
+                    end
+                end
+
+                log:trace(string.format('effective_child_vnode_list pull, vnode: %s, done', self.__id))
+                return {
+                    data = effective_child_vnode_flat_list
+                }
+            end), 'data', responsive.binding.MODE.PULL), function(execution, effective_child_vnode_flat_list)
+            self:__process_effective_child_vnode_list(effective_child_vnode_flat_list)
+        end))
         self.__disposer:add(function()
             self.__effective_child_vnode_list_execution:dispose()
         end)
@@ -807,25 +798,32 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
         if self.type == M.vnode.VNODE_TYPE_VIRTUAL then
             error('virtual vnode cannot be updated')
         end
-        log:trace(string.format('call update_ui, vnode: %s', self.__id))
+        log:trace(string.format('call update, vnode: %s', self.__id))
         if self.__stage ~= M.vnode.STAGE.UPDATE then
             error('wrong stage, stage: ' .. self.__stage)
         end
-        if self.__property_execution_list then
-            for _, execution in ipairs(self.__property_execution_list) do
-                if execution:dirty() then
-                    execution:process()
-                end
+        for _, execution in ipairs(self.__property_execution_list) do
+            if execution:dirty() then
+                execution:process()
             end
         end
         self.__style:__update()
-        if self.__effective_child_vnode_list_execution:dirty() then
-            self.__effective_child_vnode_list_execution:process()
+
+        for _, execution in ipairs(self.__effective_child_vnode_execution_list) do
+            if execution:dirty() then
+                log:trace(string.format('effective_child_vnode_execution_list dirty, vnode: %s', self.__id))
+                execution:process()
+            end
+        end
+        if self.__effective_child_vnode_execution:dirty() then
+            self.__effective_child_vnode_execution:process()
         end
 
-        if self.__effective_child_vnode_list then
-            for _, vnode in ipairs(self.__effective_child_vnode_list) do
-                vnode:__update()
+        for index = 1, #self.__child_vnode_list do
+            if self.__effective_child_vnode_list[index] then
+                for _, effective_child_vnode in ipairs(self.__effective_child_vnode_list[index]) do
+                    effective_child_vnode:__update()
+                end
             end
         end
     end,
@@ -848,164 +846,19 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
 -- TODO: 支持子模板
 M.vnode.COMPONENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
     -- #region children processing
-    __generate_child_vnode = function(self, child_template, old_vnode_list)
-        if old_vnode_list then
-            return old_vnode_list
-        end
-
-        -- TODO: 需要支持 v-if
-        -- TODO: 需要支持 v-for
-        -- local func
-        -- if child_template[':data'] then
-        --     func = load('return ' .. child_template[':data'], nil, 't', responsive.unref(self.__data))
-        -- elseif child_template.data then
-        --     func = function()
-        --         return child_template.data
-        --     end
-        -- else
-        --     func = function()
-        --         return {}
-        --     end
-        -- end
-        -- return M.vnode.create({
-        --     parent = self,
-        --     template = child_template,
-        --     data = responsive.computed.create(func)
-        -- })
-
-        return M.vnode.create({
-            parent = self,
-            template = child_template,
-            data = self.__data
-        })
-    end,
-    __refresh_child_vnode_list = function(self)
-        local child_vnode_list = {}
-
-        if (self.__template.children) then
-            for index, child in ipairs(self.__template.children) do
-                child_vnode_list[index] = self:__generate_child_vnode(child, self.__child_vnode_list[index])
-            end
-        end
-
-        self.__child_vnode_list = child_vnode_list
-    end,
+    __child_template_root_vnode = nil,
     __get_effective_vnode_list = function(self)
-        -- 虚节点并不起实质性的作用，所以需要把虚节点下的起作用的节点加上
-        if self.type == M.vnode.VNODE_TYPE_VIRTUAL then
-            return self:__get_effective_child_vnode_list()
-        else
-            return {self}
-        end
-    end,
-    __get_effective_child_vnode_list = function(self)
-        local effective_vnode_list = {}
-
-        for _, child_vnode in ipairs(self.__child_vnode_list) do
-            for _, effective_child_vnode in ipairs(child_vnode:__get_effective_vnode_list()) do
-                table.insert(effective_vnode_list, effective_child_vnode)
-            end
+        if not self.__child_template_root_vnode then
         end
 
-        return effective_vnode_list
-    end,
-    __get_effective_child_vnode_list_binding = function(self)
-        -- TODO: 这个binding应该只处理一个子节点，这样可以减少更新的影响
-        local computed = responsive.computed.create(function()
-            self:__refresh_child_vnode_list()
-            return {
-                effective_child_vnode_list = self:__get_effective_child_vnode_list()
-            }
-        end)
-        -- TODO: 思考一下这里的脏标志是否还有一定的作用
-        return responsive.binding.create(computed, 'effective_child_vnode_list')
-    end,
-    __create_element = function(self)
-        if self.type == 'flow' or self.type == 'frame' then
-            return self.__parent_vnode.__element.add({
-                type = self.type,
-                direction = (not self.direction and self.direction == 'horizontal') and 'horizontal' or 'vertical'
-            })
-        else
-            return self.__parent_vnode.__element.add({
-                type = self.type
-            })
-        end
-    end,
-    __process_effective_child_vnode_list = function(self, child_vnode_list)
-        rawset(self, '__effective_child_vnode_list', child_vnode_list)
-
-        for _, vnode in ipairs(child_vnode_list) do
-            if vnode.__stage == M.vnode.STAGE.SETUP then
-                vnode:__setup()
-            end
-        end
-        for _, vnode in ipairs(child_vnode_list) do
-            if vnode.__stage == M.vnode.STAGE.MOUNT then
-                vnode:__mount()
-            end
-        end
-
-        local vnode_map = {}
-        for _, vnode in ipairs(child_vnode_list) do
-            vnode_map[vnode.__id] = true
-        end
-
-        for _, element in ipairs(self.__element.children) do
-            local vnode = M.vnode.get_vnode_by_element(element)
-
-            if not vnode_map[vnode.__id] then
-                vnode:__unmount()
-                vnode:__dispose()
-                element.destroy()
-            end
-        end
-
-        -- TODO: 添加测试用例
-        for index = 1, #self.__element.children do
-            local element = self.__element.children[index]
-            local vnode = child_vnode_list[index]
-
-            if M.vnode.get_vnode_by_element(element) ~= vnode then
-                for index2 = index + 1, #self.__element.children do
-                    if self.__element.children[index2] == vnode then
-                        self.__element.swap_children(index, index2)
-                    end
-                end
-            end
-        end
+        return self.__child_template_root_vnode
     end,
     -- #endregion
 
     __dispose = function(self)
-        if self.__stage == M.vnode.STAGE.UPDATE then
-            self:__unmount()
-        end
         self.__disposer:dispose()
         self.__disposed = true
     end,
-
-    -- #region event handling
-    __process_event = function(self, event)
-        if event.name == defines.events.on_gui_click then
-            self:__invoke_event_handler('click', event)
-        elseif event.name == defines.events.on_gui_confirmed then
-            if self.__property_binding_map['text'] then
-                self.__property_binding_map['text']:set(event.element.text)
-            end
-            self:__invoke_event_handler('confirmed', event)
-        end
-    end,
-    __invoke_event_handler = function(self, name, event)
-        if self.__template['@' .. name] then
-            local func = load('return ' .. self.__template['@' .. name], nil, 't', responsive.unref(self.__data))()
-
-            if func then
-                func(self, name, event)
-            end
-        end
-    end,
-    -- #endregion
 
     -- #region stage processing
     __stage = M.vnode.STAGE.SETUP,
@@ -1014,142 +867,17 @@ M.vnode.COMPONENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
         if self.__stage ~= M.vnode.STAGE.SETUP then
             error('wrong stage, stage: ' .. self.__stage)
         end
-        local data = self.__data
-        local template = self.__template
-        local element = self.__element
-        local property_execution_list = {}
-        local property_binding_map = {}
 
-        for name, _ in pairs(template) do
-            if name:sub(1, 1) == ':' or name:sub(1, 1) == '@' or name:sub(1, 1) == '#' then
-                name = name:sub(2)
-            end
-            if not M.vnode.ELEMENT_PROPERTY_DEFINITION[name] and not M.vnode.EVENT_MAP[name] and name ~= 'type' and name ~=
-                'style' and name ~= 'children' and name ~= 'data' then
-                error('wrong property name in template, name: ' .. name)
-            end
-        end
-
-        if M.vnode.ELEMENT_TYPE_MAP[self.type] then
-            for name, definition in pairs(M.vnode.ELEMENT_PROPERTY_DEFINITION) do
-                if definition.write then
-                    -- TODO: 增加双向绑定的测试用例
-                    if template[':' .. name] then
-                        -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
-                        local binding = responsive.binding.create(data, template[':' .. name],
-                            responsive.binding.MODE.PULL)
-                        local execution = M.execution.create_value_execution(binding, function(execution, value)
-                            log:trace('设置 ' .. name .. ': ' .. tostring(value))
-                            self[name] = value
-                        end)
-
-                        table.insert(property_execution_list, execution)
-                    elseif template['#' .. name] then
-                        -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
-                        local binding = responsive.binding.create(data, template['#' .. name],
-                            responsive.binding.MODE.PULL_AND_PUSH)
-                        local execution = M.execution.create_value_execution(binding, function(execution, value)
-                            log:trace('设置 ' .. name .. ': ' .. tostring(value))
-                            self[name] = value
-                        end)
-
-                        table.insert(property_execution_list, execution)
-                        property_binding_map[name] = binding
-                    elseif template[name] ~= nil then
-                        -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
-                        local execution = M.execution.create_value_execution(template[name], function(execution, value)
-                            log:trace('设置 ' .. name .. ': ' .. tostring(value))
-                            self[name] = value
-                        end)
-
-                        table.insert(property_execution_list, execution)
-                    end
-                end
-            end
-        elseif self.type == M.vnode.VNODE_TYPE_VIRTUAL then
-            -- TODO: 重新考虑一下虚节点的使用场景，暂时禁用
-            error('virtual is not supported temporarily')
-        else
-            error('unknown type: ' .. self.type)
-        end
-
-        rawset(self, '__property_execution_list', property_execution_list)
-        rawset(self, '__property_binding_map', property_binding_map)
-
-        self.__disposer:add(function()
-            for _, execution in ipairs(self.__property_execution_list) do
-                execution.dispose()
-            end
-        end)
-
-        self.__style:__setup()
-        rawset(self, '__effective_child_vnode_list_execution',
-            M.execution.create_value_execution(self:__get_effective_child_vnode_list_binding(),
-                function(execution, child_vnode_list)
-                    self:__process_effective_child_vnode_list(child_vnode_list)
-                end))
-        self.__disposer:add(function()
-            self.__effective_child_vnode_list_execution:dispose()
-        end)
-        if self.type == M.vnode.VNODE_TYPE_VIRTUAL then
-            rawset(self, '__stage', M.vnode.STAGE.UPDATE)
-        else
-            rawset(self, '__stage', M.vnode.STAGE.MOUNT)
-        end
+        rawset(self, '__stage', M.vnode.STAGE.DONE)
     end,
     __mount = function(self, element)
-        log:trace(string.format('call mount, vnode: %s, element: %d', self.__id, (element or {
-            index = -1
-        }).index))
-        if self.__stage ~= M.vnode.STAGE.MOUNT then
-            error('wrong stage, stage: ' .. self.__stage)
-        end
-        if not element then
-            element = self:__create_element()
-        end
-
-        rawset(self, '__element', element)
-        M.vnode.element_key_to_vnode_map[M.vnode.get_element_key(element)] = self
-        rawset(self, '__stage', M.vnode.STAGE.UPDATE)
+        error('component cannot mounte to element')
     end,
     __update = function(self)
-        if self.type == M.vnode.VNODE_TYPE_VIRTUAL then
-            error('virtual vnode cannot be updated')
-        end
-        log:trace(string.format('call update_ui, vnode: %s', self.__id))
-        if self.__stage ~= M.vnode.STAGE.UPDATE then
-            error('wrong stage, stage: ' .. self.__stage)
-        end
-        if self.__property_execution_list then
-            for _, execution in ipairs(self.__property_execution_list) do
-                if execution:dirty() then
-                    execution:process()
-                end
-            end
-        end
-        self.__style:__update()
-        if self.__effective_child_vnode_list_execution:dirty() then
-            self.__effective_child_vnode_list_execution:process()
-        end
-
-        if self.__effective_child_vnode_list then
-            for _, vnode in ipairs(self.__effective_child_vnode_list) do
-                vnode:__update()
-            end
-        end
+        error('component cannot update')
     end,
     __unmount = function(self)
-        log:trace(string.format('call unmount, vnode: %s, element: %d', self.__id, (self.__element or {}).index))
-        if self.__stage ~= M.vnode.STAGE.UPDATE then
-            error('wrong stage, stage: ' .. self.__stage)
-        end
-
-        if self.__element then
-            M.vnode.element_key_to_vnode_map[M.vnode.get_element_key(self.__element)] = nil
-        end
-
-        rawset(self, '__element', nil)
-        rawset(self, '__stage', M.vnode.STAGE.UPDATE)
+        error('component cannot unmount')
     end
     -- #endregion
 })
@@ -1266,7 +994,6 @@ M.vnode.create = function(definition)
         __property_table = {},
         __binding_set_map = {},
         __property_execution_list = nil,
-        __child_vnode_list = {},
         __disposer = tools.disposer.create()
     })
 
@@ -1301,17 +1028,21 @@ M.component.factory.PROTOTYPE = {
 
 setmetatable(M.component.factory.PROTOTYPE, M.component.factory.METATABLE)
 
-M.component.get_factory = function(name)
-    return M.component.component_factory_map[name]
+M.component.get_global_factory = function()
+    return {
+        get_component_factory = function(name)
+            return M.component.component_factory_map[name]
+        end
+    }
 end
 
-M.component.register = function(name, creation_function)
+M.component.register_component_factory = function(name, get)
     if M.component.component_factory_map[name] then
         error('component already exists, name: ' .. name)
     end
     M.component.component_factory_map[name] = tools.inherit_prototype(M.component.PROTOTYPE, {
         __id = unique_id.generate('component'),
-        __creation_function = creation_function
+        __get = get
     })
 end
 -- #endregion

@@ -214,7 +214,7 @@ M.reactive = {}
 M.reactive.METATABLE = {
     __type = 'kreactive',
     __index = function(self, name)
-        if name:sub(1, 2) == '__' then
+        if type(name) == 'string' and name:sub(1, 2) == '__' then
             return rawget(self, name)
         else
             self.__notifier:emit(self, M.EVENT.PROPERTY_READ, name)
@@ -225,7 +225,7 @@ M.reactive.METATABLE = {
     end,
     __newindex = function(self, name, value)
         -- TODO[不是问题]: 如果新的值是一个 table，是否需要转换成一个 reactive
-        if name:sub(1, 2) == '__' then
+        if type(name) == 'string' and name:sub(1, 2) == '__' then
             -- 内置属性不允许修改
             return
         else
@@ -341,7 +341,8 @@ setmetatable(M.watch.PROTOTYPE, M.watch.METATABLE)
 M.watch.create = function()
     return tools.inherit_prototype(M.watch.PROTOTYPE, {
         __id = unique_id.generate('watch'),
-        __notifier = M.notifier.create()
+        __notifier = M.notifier.create(),
+        __watch_dispose_list = {}
     })
 end
 -- #endregion
