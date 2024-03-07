@@ -847,11 +847,22 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
 M.vnode.COMPONENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
     -- #region children processing
     __child_template_root_vnode = nil,
-    __get_effective_vnode_list = function(self)
-        if not self.__child_template_root_vnode then
-        end
-
-        return self.__child_template_root_vnode
+    __ensure_child_vnode_list = function(self)
+    end,
+    __get_effective_vnode_list_binding = function(self)
+        local computed = responsive.computed.create(function()
+            local func
+            if self.__template[':data'] then
+                func = load('return ' .. self.__template[':data'], nil, 't', responsive.unref(self.__data))
+            elseif self.__template.data then
+                func = function ()
+                    return {}
+                end
+            end
+        end)
+        return responsive.binding.create({
+            data = self.__child_template_root_vnode:__get_effective_vnode_list_binding()
+        }, 'data', responsive.binding.MODE.ONE_TIME)
     end,
     -- #endregion
 
