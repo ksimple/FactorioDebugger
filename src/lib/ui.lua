@@ -35,11 +35,10 @@ M.__process_event = function(event)
     end
 end
 
--- #region __property_descriptor_map
--- TODO: 这个类的名字考虑改一下
-M.__property_descriptor_map = {}
+-- #region __propertydescriptormap
+M.__propertydescriptormap = {}
 
-M.__property_descriptor_map.TYPE = {
+M.__propertydescriptormap.TYPE = {
     CONST = 'CONST',
     DYNAMIC = 'DYNAMIC',
     MODEL = 'MODEL',
@@ -47,44 +46,44 @@ M.__property_descriptor_map.TYPE = {
     SLOT = 'SLOT'
 }
 
-M.__property_descriptor_map.METATABLE = {
+M.__propertydescriptormap.METATABLE = {
     __type = 'kvtemplate'
 }
 
 local prefix_map = {
     [':'] = {
-        type = M.__property_descriptor_map.TYPE.DYNAMIC,
+        type = M.__propertydescriptormap.TYPE.DYNAMIC,
         length = 2
     },
     ['v-bind:'] = {
-        type = M.__property_descriptor_map.TYPE.DYNAMIC,
+        type = M.__propertydescriptormap.TYPE.DYNAMIC,
         length = 8
     },
     ['v-model:'] = {
-        type = M.__property_descriptor_map.TYPE.MODEL,
+        type = M.__propertydescriptormap.TYPE.MODEL,
         length = 9
     },
     ['@'] = {
-        type = M.__property_descriptor_map.TYPE.CALLBACK,
+        type = M.__propertydescriptormap.TYPE.CALLBACK,
         length = 2
     },
     ['v-on:'] = {
-        type = M.__property_descriptor_map.TYPE.CALLBACK,
+        type = M.__propertydescriptormap.TYPE.CALLBACK,
         length = 6
     },
     ['#'] = {
-        type = M.__property_descriptor_map.TYPE.SLOT,
+        type = M.__propertydescriptormap.TYPE.SLOT,
         length = 2
     },
     ['v-slot:'] = {
-        type = M.__property_descriptor_map.TYPE.SLOT,
+        type = M.__propertydescriptormap.TYPE.SLOT,
         length = 8
     }
 }
 
-M.__property_descriptor_map.PROTOTYPE = {
+M.__propertydescriptormap.PROTOTYPE = {
     __id = tools.volatile.create(function()
-        return unique_id.generate('template')
+        return unique_id.generate('propertydescriptormap')
     end),
     __descriptor_map = nil,
     __ensure_descriptor_map = function(self)
@@ -92,7 +91,7 @@ M.__property_descriptor_map.PROTOTYPE = {
 
         for name, value in pairs(self.__template) do
             if not tools.string_starts_with(name, '_') then
-                local descriptorType = M.__property_descriptor_map.TYPE.CONST
+                local descriptorType = M.__propertydescriptormap.TYPE.CONST
                 local descriptorLength = 0
 
                 for prefix, info in pairs(prefix_map) do
@@ -133,10 +132,10 @@ M.__property_descriptor_map.PROTOTYPE = {
     end
 }
 
-setmetatable(M.__property_descriptor_map.PROTOTYPE, M.__property_descriptor_map.METATABLE)
+setmetatable(M.__propertydescriptormap.PROTOTYPE, M.__propertydescriptormap.METATABLE)
 
-M.__property_descriptor_map.create = function(template)
-    return tools.inherit_prototype(M.__property_descriptor_map.PROTOTYPE, {
+M.__propertydescriptormap.create = function(template)
+    return tools.inherit_prototype(M.__propertydescriptormap.PROTOTYPE, {
         __template = template
     })
 end
@@ -212,7 +211,7 @@ M.vstyle.PROTOTYPE = {
             local descriptor = self.__property_descriptor_map:get_descriptor(name)
 
             if descriptor then
-                if descriptor.type == M.__property_descriptor_map.TYPE.DYNAMIC then
+                if descriptor.type == M.__propertydescriptormap.TYPE.DYNAMIC then
                     local binding = responsive.binding.create(data, descriptor.value, responsive.binding.MODE.PULL)
                     local execution = M.execution.create_value_execution(binding, function(execution, value)
                         log:trace('设置 ' .. name .. ': ' .. value)
@@ -220,7 +219,7 @@ M.vstyle.PROTOTYPE = {
                     end)
 
                     table.insert(property_execution_list, execution)
-                elseif descriptor.type == M.__property_descriptor_map.TYPE.CONST then
+                elseif descriptor.type == M.__propertydescriptormap.TYPE.CONST then
                     local execution = M.execution.create_value_execution(descriptor.value, function(execution, value)
                         log:trace('设置 ' .. name .. ': ' .. value)
                         self[name] = value
@@ -249,7 +248,7 @@ setmetatable(M.vstyle.PROTOTYPE, M.vstyle.METATABLE)
 M.vstyle.create = function(vnode)
     return tools.inherit_prototype(M.vstyle.PROTOTYPE, {
         __vnode = vnode,
-        __property_descriptor_map = M.__property_descriptor_map.create(vnode.__template.style)
+        __property_descriptor_map = M.__propertydescriptormap.create(vnode.__template.style)
     })
 end
 -- #endregion
@@ -810,7 +809,7 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
         local descriptor = self.__property_descriptor_map:get_descriptor(name)
         local func
 
-        if descriptor and descriptor.type == M.__property_descriptor_map.TYPE.CALLBACK then
+        if descriptor and descriptor.type == M.__propertydescriptormap.TYPE.CALLBACK then
             func = load('return ' .. descriptor.value, nil, 't', responsive.unref(self.__data))()
         end
 
@@ -839,7 +838,7 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
                     local descriptor = self.__property_descriptor_map:get_descriptor(name)
 
                     if descriptor then
-                        if descriptor.type == M.__property_descriptor_map.TYPE.DYNAMIC then
+                        if descriptor.type == M.__propertydescriptormap.TYPE.DYNAMIC then
                             -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
                             local binding = responsive.binding.create(data, descriptor.value,
                                 responsive.binding.MODE.PULL)
@@ -849,7 +848,7 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
                             end)
 
                             table.insert(property_execution_list, execution)
-                        elseif descriptor.type == M.__property_descriptor_map.TYPE.MODEL then
+                        elseif descriptor.type == M.__propertydescriptormap.TYPE.MODEL then
                             -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
                             local binding = responsive.binding.create(data, descriptor.value,
                                 responsive.binding.MODE.PULL_AND_PUSH)
@@ -860,7 +859,7 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
 
                             table.insert(property_execution_list, execution)
                             property_binding_map[name] = binding
-                        elseif descriptor.type == M.__property_descriptor_map.TYPE.CONST then
+                        elseif descriptor.type == M.__propertydescriptormap.TYPE.CONST then
                             -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
                             local execution = M.execution.create_value_execution(descriptor.value,
                                 function(execution, value)
@@ -1013,10 +1012,10 @@ M.vnode.COMPONENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
         local data = {}
 
         if data_descripter then
-            if data_descripter.type == M.__property_descriptor_map.TYPE.DYNAMIC then
+            if data_descripter.type == M.__propertydescriptormap.TYPE.DYNAMIC then
                 data = responsive.computed.create(load('return ' .. data_descripter.value, nil, 't',
                     responsive.unref(self.__data)))
-            elseif data_descripter.type == M.__property_descriptor_map.TYPE.CONST then
+            elseif data_descripter.type == M.__propertydescriptormap.TYPE.CONST then
                 data = data_descripter.value
             end
         end
@@ -1067,10 +1066,10 @@ M.vnode.SLOT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
         local data = {}
 
         if data_descripter then
-            if data_descripter.type == M.__property_descriptor_map.TYPE.DYNAMIC then
+            if data_descripter.type == M.__propertydescriptormap.TYPE.DYNAMIC then
                 data = responsive.computed.create(load('return ' .. data_descripter.value, nil, 't',
                     responsive.unref(self.__data)))
-            elseif data_descripter.type == M.__property_descriptor_map.TYPE.CONST then
+            elseif data_descripter.type == M.__propertydescriptormap.TYPE.CONST then
                 data = data_descripter.value
             end
         end
@@ -1220,7 +1219,7 @@ M.vnode.create = function(definition)
     local data = definition.data
     local parent_vnode = definition.parent
     local vnode = tools.inherit_prototype(M.vnode.ELEMENT_TYPE_MAP[template.type].prototype, {
-        __property_descriptor_map = M.__property_descriptor_map.create(template),
+        __property_descriptor_map = M.__propertydescriptormap.create(template),
         __template = template,
         __data = data,
         __parent_vnode = parent_vnode

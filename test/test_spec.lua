@@ -790,34 +790,34 @@ describe('responsive', function()
 end)
 
 describe('ui', function()
-    describe('__property_descriptor_map', function()
+    describe('__propertydescriptormap', function()
         it('check type', function()
             local helper = require('helper')
             local ui = require('lib.ui')
 
-            local property_descriptor_map = ui.__property_descriptor_map.create({})
+            local property_descriptor_map = ui.__propertydescriptormap.create({})
 
-            assert(getmetatable(property_descriptor_map) == ui.__property_descriptor_map.METATABLE)
+            assert(getmetatable(property_descriptor_map) == ui.__propertydescriptormap.METATABLE)
         end)
         it('const value', function()
             local helper = require('helper')
             local ui = require('lib.ui')
 
-            local property_descriptor_map = ui.__property_descriptor_map.create({
+            local property_descriptor_map = ui.__propertydescriptormap.create({
                 property1 = 'test1'
             })
 
             property_descriptor_map:__ensure_descriptor_map()
 
             log:debug(property_descriptor_map.__descriptor_map)
-            assert(property_descriptor_map:get_descriptor('property1').type == ui.__property_descriptor_map.TYPE.CONST)
+            assert(property_descriptor_map:get_descriptor('property1').type == ui.__propertydescriptormap.TYPE.CONST)
             assert(property_descriptor_map:get_descriptor('property1').value == 'test1')
         end)
         it('dynamic value', function()
             local helper = require('helper')
             local ui = require('lib.ui')
 
-            local property_descriptor_map = ui.__property_descriptor_map.create({
+            local property_descriptor_map = ui.__propertydescriptormap.create({
                 [':property1'] = 'test1',
                 ['v-bind:property2'] = 'test2'
             })
@@ -825,30 +825,30 @@ describe('ui', function()
             property_descriptor_map:__ensure_descriptor_map()
 
             log:debug(property_descriptor_map.__descriptor_map)
-            assert(property_descriptor_map:get_descriptor('property1').type == ui.__property_descriptor_map.TYPE.DYNAMIC)
+            assert(property_descriptor_map:get_descriptor('property1').type == ui.__propertydescriptormap.TYPE.DYNAMIC)
             assert(property_descriptor_map:get_descriptor('property1').value == 'test1')
-            assert(property_descriptor_map:get_descriptor('property2').type == ui.__property_descriptor_map.TYPE.DYNAMIC)
+            assert(property_descriptor_map:get_descriptor('property2').type == ui.__propertydescriptormap.TYPE.DYNAMIC)
             assert(property_descriptor_map:get_descriptor('property2').value == 'test2')
         end)
         it('model value', function()
             local helper = require('helper')
             local ui = require('lib.ui')
 
-            local property_descriptor_map = ui.__property_descriptor_map.create({
+            local property_descriptor_map = ui.__propertydescriptormap.create({
                 ['v-model:property1'] = 'test1'
             })
 
             property_descriptor_map:__ensure_descriptor_map()
 
             log:debug(property_descriptor_map.__descriptor_map)
-            assert(property_descriptor_map:get_descriptor('property1').type == ui.__property_descriptor_map.TYPE.MODEL)
+            assert(property_descriptor_map:get_descriptor('property1').type == ui.__propertydescriptormap.TYPE.MODEL)
             assert(property_descriptor_map:get_descriptor('property1').value == 'test1')
         end)
         it('callback value', function()
             local helper = require('helper')
             local ui = require('lib.ui')
 
-            local property_descriptor_map = ui.__property_descriptor_map.create({
+            local property_descriptor_map = ui.__propertydescriptormap.create({
                 ['@property1'] = 'test1',
                 ['v-on:property2'] = 'test2'
             })
@@ -856,16 +856,16 @@ describe('ui', function()
             property_descriptor_map:__ensure_descriptor_map()
 
             log:debug(property_descriptor_map.__descriptor_map)
-            assert(property_descriptor_map:get_descriptor('property1').type == ui.__property_descriptor_map.TYPE.CALLBACK)
+            assert(property_descriptor_map:get_descriptor('property1').type == ui.__propertydescriptormap.TYPE.CALLBACK)
             assert(property_descriptor_map:get_descriptor('property1').value == 'test1')
-            assert(property_descriptor_map:get_descriptor('property2').type == ui.__property_descriptor_map.TYPE.CALLBACK)
+            assert(property_descriptor_map:get_descriptor('property2').type == ui.__propertydescriptormap.TYPE.CALLBACK)
             assert(property_descriptor_map:get_descriptor('property2').value == 'test2')
         end)
         it('slot value', function()
             local helper = require('helper')
             local ui = require('lib.ui')
 
-            local property_descriptor_map = ui.__property_descriptor_map.create({
+            local property_descriptor_map = ui.__propertydescriptormap.create({
                 ['#property1'] = 'test1',
                 ['v-slot:property2'] = 'test2'
             })
@@ -873,9 +873,9 @@ describe('ui', function()
             property_descriptor_map:__ensure_descriptor_map()
 
             log:debug(property_descriptor_map.__descriptor_map)
-            assert(property_descriptor_map:get_descriptor('property1').type == ui.__property_descriptor_map.TYPE.SLOT)
+            assert(property_descriptor_map:get_descriptor('property1').type == ui.__propertydescriptormap.TYPE.SLOT)
             assert(property_descriptor_map:get_descriptor('property1').value == 'test1')
-            assert(property_descriptor_map:get_descriptor('property2').type == ui.__property_descriptor_map.TYPE.SLOT)
+            assert(property_descriptor_map:get_descriptor('property2').type == ui.__propertydescriptormap.TYPE.SLOT)
             assert(property_descriptor_map:get_descriptor('property2').value == 'test2')
         end)
     end)

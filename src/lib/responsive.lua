@@ -271,6 +271,7 @@ M.reactive.PROTOTYPE = {
 setmetatable(M.reactive.PROTOTYPE, M.reactive.METATABLE)
 
 M.reactive.create = function(raw_table)
+    -- TODO: 改成 lazy 模式，取得时候再包装
     if raw_table and type(raw_table) ~= 'table' and getmetatable(raw_table) ~= nil then
         error('can only accept table')
     end
@@ -296,8 +297,24 @@ M.reactive.create = function(raw_table)
 end
 -- #endregion
 
--- #region reactive_proxy
--- TODO: 增加逻辑
+-- #region reactiveproxy
+M.reactiveproxy = {}
+
+M.reactiveproxy.METATABLE = {
+    __type = 'kreactiveproxy',
+}
+
+M.reactiveproxy.PROTOTYPE = {
+    __id = tools.volatile.create(function()
+        return unique_id.generate('reactiveproxy')
+    end),
+    __notifier = tools.volatile.create(function()
+        return M.notifier.create(M.responsive_global_notifier)
+    end),
+    __add_listener = function(self, event, handler)
+        return self.__notifier:add_listener(event, handler)
+    end
+}
 -- #endregion
 
 -- #region watch
