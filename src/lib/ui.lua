@@ -984,7 +984,6 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
 })
 
 M.vnode.COMPONENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
-    -- #region children processing
     __child_template_root_vnode = nil,
     __ensure_child_vnode_list = function(self)
         local component_factory = M.component.get_factory():get_component_factory(self.__template:get_raw().name)
@@ -1012,14 +1011,12 @@ M.vnode.COMPONENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
             data = {self.__child_template_root_vnode}
         }, 'data', responsive.binding.MODE.ONE_TIME)
     end,
-    -- #endregion
 
     __dispose = function(self)
         self.__disposer:dispose()
         self.__disposed = true
     end,
 
-    -- #region stage processing
     __stage = M.vnode.STAGE.SETUP,
     __setup = function(self)
         log:trace(string.format('call setup, vnode: %s', self.__id))
@@ -1038,7 +1035,6 @@ M.vnode.COMPONENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
     __unmount = function(self)
         error('component cannot unmount')
     end
-    -- #endregion
 })
 
 M.vnode.ELEMENT_TYPE_MAP = {
