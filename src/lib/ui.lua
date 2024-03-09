@@ -204,12 +204,12 @@ M.vstyle.PROTOTYPE = {
         local data = self.__vnode.__data
         local property_execution_list = {}
 
-        if not self.__vnode.__template:get_template().style then
+        if not self.__vnode.__template.style then
             return
         end
 
         for _, name in ipairs(M.vstyle.STYLE_PROPERTY_NAME_LIST) do
-            local descriptor = self.__template:get_descriptor(name)
+            local descriptor = self.__property_descriptor_map:get_descriptor(name)
 
             if descriptor then
                 if descriptor.type == M.__property_descriptor_map.TYPE.DYNAMIC then
@@ -249,7 +249,7 @@ setmetatable(M.vstyle.PROTOTYPE, M.vstyle.METATABLE)
 M.vstyle.create = function(vnode)
     return tools.inherit_prototype(M.vstyle.PROTOTYPE, {
         __vnode = vnode,
-        __template = M.__property_descriptor_map.create(vnode.__template:get_template().style)
+        __property_descriptor_map = M.__property_descriptor_map.create(vnode.__template.style)
     })
 end
 -- #endregion
@@ -665,7 +665,7 @@ M.vnode.PROTOTYPE = {
         return tools.disposer.create()
     end),
     __get_type = function(self)
-        return self.__template and self.__template:get_template().type or nil
+        return self.__property_descriptor_map and self.__template.type or nil
     end,
     __get_parent_element = function(self)
         if self.__parent_vnode.__element then
@@ -678,7 +678,7 @@ M.vnode.PROTOTYPE = {
         error('not implemented')
     end,
     __ensure_binding_descriptor_map = function(self)
-        local binding_descriptor_map = M.__generate_binding_descriptor_map(self.__template)
+        local binding_descriptor_map = M.__generate_binding_descriptor_map(self.__property_descriptor_map)
 
         self.__binding_descriptor_map = binding_descriptor_map
     end,
@@ -711,8 +711,8 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
 
         local child_vnode_list = {}
 
-        if (self.__template:get_template().children) then
-            for index, child in ipairs(self.__template:get_template().children) do
+        if (self.__template.children) then
+            for index, child in ipairs(self.__template.children) do
                 child_vnode_list[index] = M.vnode.create({
                     parent = self,
                     template = child,
@@ -807,7 +807,7 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
     end,
     __invoke_event_handler = function(self, name, event)
         -- TODO: 支持一些事件后缀 .stop .prevent .self .once .passive
-        local descriptor = self.__template:get_descriptor(name)
+        local descriptor = self.__property_descriptor_map:get_descriptor(name)
         local func
 
         if descriptor and descriptor.type == M.__property_descriptor_map.TYPE.CALLBACK then
@@ -836,7 +836,7 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
                 if definition.write then
                     -- TODO: 增加双向绑定的测试用例
 
-                    local descriptor = self.__template:get_descriptor(name)
+                    local descriptor = self.__property_descriptor_map:get_descriptor(name)
 
                     if descriptor then
                         if descriptor.type == M.__property_descriptor_map.TYPE.DYNAMIC then
@@ -1008,8 +1008,8 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
 M.vnode.COMPONENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
     __child_template_root_vnode = nil,
     __ensure_child_vnode_list = function(self)
-        local component_factory = M.component.get_factory():get_component_factory(self.__template:get_template().name)
-        local data_descripter = self.__template:get_descriptor('data')
+        local component_factory = M.component.get_factory():get_component_factory(self.__template.name)
+        local data_descripter = self.__property_descriptor_map:get_descriptor('data')
         local data = {}
 
         if data_descripter then
@@ -1062,8 +1062,8 @@ M.vnode.COMPONENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
 M.vnode.SLOT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
     __child_template_root_vnode = nil,
     __ensure_child_vnode_list = function(self)
-        local component_factory = M.component.get_factory():get_component_factory(self.__template:get_template().name)
-        local data_descripter = self.__template:get_descriptor('data')
+        local component_factory = M.component.get_factory():get_component_factory(self.__template.name)
+        local data_descripter = self.__property_descriptor_map:get_descriptor('data')
         local data = {}
 
         if data_descripter then
@@ -1220,7 +1220,8 @@ M.vnode.create = function(definition)
     local data = definition.data
     local parent_vnode = definition.parent
     local vnode = tools.inherit_prototype(M.vnode.ELEMENT_TYPE_MAP[template.type].prototype, {
-        __template = M.__property_descriptor_map.create(template),
+        __property_descriptor_map = M.__property_descriptor_map.create(template),
+        __template = template,
         __data = data,
         __parent_vnode = parent_vnode
     })
