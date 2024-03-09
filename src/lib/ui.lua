@@ -83,11 +83,14 @@ local prefix_map = {
 }
 
 M.__property_descriptor_map.PROTOTYPE = {
+    __id = tools.volatile.create(function()
+        return unique_id.generate('template')
+    end),
     __descriptor_map = nil,
     __ensure_descriptor_map = function(self)
         local descriptor_map = {}
 
-        for name, value in pairs(self.__raw) do
+        for name, value in pairs(self.__template) do
             if not tools.string_starts_with(name, '_') then
                 local descriptorType = M.__property_descriptor_map.TYPE.CONST
                 local descriptorLength = 0
@@ -125,8 +128,8 @@ M.__property_descriptor_map.PROTOTYPE = {
     get_descriptor_map = function(self)
         return self.__descriptor_map
     end,
-    get_raw = function(self)
-        return self.__raw
+    get_template = function(self)
+        return self.__template
     end
 }
 
@@ -134,8 +137,7 @@ setmetatable(M.__property_descriptor_map.PROTOTYPE, M.__property_descriptor_map.
 
 M.__property_descriptor_map.create = function(template)
     return tools.inherit_prototype(M.__property_descriptor_map.PROTOTYPE, {
-        __id = unique_id.generate('template'),
-        __raw = template
+        __template = template
     })
 end
 -- #endregion
@@ -189,11 +191,20 @@ M.vstyle.STYLE_PROPERTY_NAME_LIST = {'minimal_width', 'maximal_width', 'minimal_
                                      'cell_padding', 'extra_padding_when_activated', 'extra_margin_when_activated'}
 
 M.vstyle.PROTOTYPE = {
+    __id = tools.volatile.create(function()
+        return unique_id.generate('vstyle')
+    end),
+    __property_table = tools.volatile.create(function()
+        return {}
+    end),
+    __property_execution_list = tools.volatile.create(function()
+        return {}
+    end),
     __setup = function(self)
         local data = self.__vnode.__data
         local property_execution_list = {}
 
-        if not self.__vnode.__template:get_raw().style then
+        if not self.__vnode.__template:get_template().style then
             return
         end
 
@@ -237,11 +248,8 @@ setmetatable(M.vstyle.PROTOTYPE, M.vstyle.METATABLE)
 
 M.vstyle.create = function(vnode)
     return tools.inherit_prototype(M.vstyle.PROTOTYPE, {
-        __id = unique_id.generate('vstyle'),
         __vnode = vnode,
-        __template = M.__property_descriptor_map.create(vnode.__template:get_raw().style),
-        __property_table = {},
-        __property_execution_list = {}
+        __template = M.__property_descriptor_map.create(vnode.__template:get_template().style)
     })
 end
 -- #endregion
@@ -640,10 +648,24 @@ M.vnode.get_vnode_by_element = function(element)
 end
 
 M.vnode.PROTOTYPE = {
+    __id = tools.volatile.create(function()
+        return unique_id.generate('vnode')
+    end),
     __disposed = false,
     __binding_descriptor_map = nil,
+    __element = nil,
+    __property_table = tools.volatile.create(function()
+        return {}
+    end),
+    __binding_set_map = tools.volatile.create(function()
+        return {}
+    end),
+    __property_execution_list = nil,
+    __disposer = tools.volatile.create(function()
+        return tools.disposer.create()
+    end),
     __get_type = function(self)
-        return self.__template and self.__template:get_raw().type or nil
+        return self.__template and self.__template:get_template().type or nil
     end,
     __get_parent_element = function(self)
         if self.__parent_vnode.__element then
@@ -680,7 +702,7 @@ M.vnode.PROTOTYPE = {
 setmetatable(M.vnode.PROTOTYPE, M.vnode.METATABLE)
 
 -- TODO: tab 的特殊处理逻辑
-M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
+M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
     -- #region children processing
     __ensure_child_vnode_list = function(self)
         if self.__child_vnode_list then
@@ -689,8 +711,8 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
 
         local child_vnode_list = {}
 
-        if (self.__template:get_raw().children) then
-            for index, child in ipairs(self.__template:get_raw().children) do
+        if (self.__template:get_template().children) then
+            for index, child in ipairs(self.__template:get_template().children) do
                 child_vnode_list[index] = M.vnode.create({
                     parent = self,
                     template = child,
@@ -983,10 +1005,64 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
     -- #endregion
 })
 
-M.vnode.COMPONENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
+M.vnode.COMPONENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
     __child_template_root_vnode = nil,
     __ensure_child_vnode_list = function(self)
-        local component_factory = M.component.get_factory():get_component_factory(self.__template:get_raw().name)
+        local component_factory = M.component.get_factory():get_component_factory(self.__template:get_template().name)
+        local data_descripter = self.__template:get_descriptor('data')
+        local data = {}
+
+        if data_descripter then
+            if data_descripter.type == M.__property_descriptor_map.TYPE.DYNAMIC then
+                data = responsive.computed.create(load('return ' .. data_descripter.value, nil, 't',
+                    responsive.unref(self.__data)))
+            elseif data_descripter.type == M.__property_descriptor_map.TYPE.CONST then
+                data = data_descripter.value
+            end
+        end
+        rawset(self, '__child_template_root_vnode', component_factory:get({
+            parent = self,
+            data = data
+        }))
+    end,
+    __get_effective_vnode_list_binding = function(self)
+        log:trace(string.format('call get_effective_vnode_list_binding, vnode: %s', self.__id))
+        self:__ensure_child_vnode_list()
+
+        return responsive.binding.create({
+            data = {self.__child_template_root_vnode}
+        }, 'data', responsive.binding.MODE.ONE_TIME)
+    end,
+
+    __dispose = function(self)
+        self.__disposer:dispose()
+        self.__disposed = true
+    end,
+
+    __stage = M.vnode.STAGE.SETUP,
+    __setup = function(self)
+        log:trace(string.format('call setup, vnode: %s', self.__id))
+        if self.__stage ~= M.vnode.STAGE.SETUP then
+            error('wrong stage, stage: ' .. self.__stage)
+        end
+
+        rawset(self, '__stage', M.vnode.STAGE.DONE)
+    end,
+    __mount = function(self, element)
+        error('component cannot mounte to element')
+    end,
+    __update = function(self)
+        error('component cannot update')
+    end,
+    __unmount = function(self)
+        error('component cannot unmount')
+    end
+})
+
+M.vnode.SLOT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
+    __child_template_root_vnode = nil,
+    __ensure_child_vnode_list = function(self)
+        local component_factory = M.component.get_factory():get_component_factory(self.__template:get_template().name)
         local data_descripter = self.__template:get_descriptor('data')
         local data = {}
 
@@ -1125,6 +1201,10 @@ M.vnode.ELEMENT_TYPE_MAP = {
     component = {
         prototype = M.vnode.COMPONENT_PROTOTYPE,
         vstyle = false
+    },
+    slot = {
+        prototype = M.vnode.SLOT_PROTOTYPE,
+        vstyle = false
     }
 }
 
@@ -1140,16 +1220,9 @@ M.vnode.create = function(definition)
     local data = definition.data
     local parent_vnode = definition.parent
     local vnode = tools.inherit_prototype(M.vnode.ELEMENT_TYPE_MAP[template.type].prototype, {
-        __id = unique_id.generate('vnode'),
-        __definition = definition,
         __template = M.__property_descriptor_map.create(template),
         __data = data,
-        __parent_vnode = parent_vnode,
-        __element = nil,
-        __property_table = {},
-        __binding_set_map = {},
-        __property_execution_list = nil,
-        __disposer = tools.disposer.create()
+        __parent_vnode = parent_vnode
     })
 
     if M.vnode.ELEMENT_TYPE_MAP[template.type].vstyle then

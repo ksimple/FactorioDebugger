@@ -8,6 +8,36 @@ M.EVENT = {
     PROPERTY_CHANGED = 'property_changed'
 }
 
+-- #region module functions
+M.is_ref = function(t)
+    local metatable = getmetatable(t)
+    return metatable == M.ref.METATABLE or metatable == M.computed.METATABLE
+end
+
+M.unref = function(ref)
+    if M.is_ref(ref) then
+        return ref.value
+    else
+        return ref
+    end
+end
+
+-- TODO: 增加一个设置值的函数
+M.setref = function(ref, value)
+    if M.is_ref(ref) then
+        ref.value = value
+        return ref
+    else
+        return value
+    end
+end
+
+M.is_reactive = function(t)
+    local metatable = getmetatable(t)
+    return metatable == M.ref.METATABLE or metatable == M.computed.METATABLE or metatable == M.reactive.METATABLE
+end
+-- #endregion
+
 -- #region notifier
 M.notifier = {}
 
@@ -18,6 +48,12 @@ M.notifier.METATABLE = {
 }
 
 M.notifier.PROTOTYPE = {
+    __id = tools.volatile.create(function()
+        return unique_id.generate('notifier')
+    end),
+    __listener = tools.volatile.create(function()
+        return {}
+    end),
     add_listener = function(self, event, handler)
         if not self.__listener[event] then
             self.__listener[event] = {
@@ -66,43 +102,11 @@ M.notifier.create = function(parent)
     end
 
     return tools.inherit_prototype(M.notifier.PROTOTYPE, {
-        __id = unique_id.generate('notifier'),
-        __listener = {},
         __parent = parent
     })
 end
--- #endregion
 
 M.responsive_global_notifier = M.notifier.create()
-
--- #region module functions
-M.is_ref = function(t)
-    local metatable = getmetatable(t)
-    return metatable == M.ref.METATABLE or metatable == M.computed.METATABLE
-end
-
-M.unref = function(ref)
-    if M.is_ref(ref) then
-        return ref.value
-    else
-        return ref
-    end
-end
-
--- TODO: 增加一个设置值的函数
-M.setref = function(ref, value)
-    if M.is_ref(ref) then
-        ref.value = value
-        return ref
-    else
-        return value
-    end
-end
-
-M.is_reactive = function(t)
-    local metatable = getmetatable(t)
-    return metatable == M.ref.METATABLE or metatable == M.computed.METATABLE or metatable == M.reactive.METATABLE
-end
 -- #endregion
 
 -- #region ref
@@ -138,17 +142,22 @@ M.ref.METATABLE = {
     end
 }
 
-M.ref.PROTOTYPE = {}
+M.ref.PROTOTYPE = {
+    __id = tools.volatile.create(function()
+        return unique_id.generate('ref')
+    end),
+    __notifier = tools.volatile.create(function()
+        return M.notifier.create(M.responsive_global_notifier)
+    end),
+    __add_listener = function(self, event, handler)
+        return self.__notifier:add_listener(event, handler)
+    end
+}
 
 setmetatable(M.ref.PROTOTYPE, M.ref.METATABLE)
 
 M.ref.create = function(value)
     return tools.inherit_prototype(M.ref.PROTOTYPE, {
-        __id = unique_id.generate('ref'),
-        __notifier = M.notifier.create(M.responsive_global_notifier),
-        __add_listener = function(self, event, handler)
-            return self.__notifier:add_listener(event, handler)
-        end,
         __value = value
     })
 end
@@ -190,20 +199,25 @@ M.computed.METATABLE = {
     end
 }
 
-M.computed.PROTOTYPE = {}
+M.computed.PROTOTYPE = {
+    __id = tools.volatile.create(function()
+        return unique_id.generate('computed')
+    end),
+    __notifier = tools.volatile.create(function()
+        return M.notifier.create(M.responsive_global_notifier)
+    end),
+    __value = nil,
+    __add_listener = function(self, event, handler)
+        return self.__notifier:add_listener(event, handler)
+    end
+}
 
 setmetatable(M.computed.PROTOTYPE, M.computed.METATABLE)
 
 M.computed.create = function(get, set)
     return tools.inherit_prototype(M.computed.PROTOTYPE, {
-        __id = unique_id.generate('computed'),
-        __notifier = M.notifier.create(M.responsive_global_notifier),
-        __add_listener = function(self, event, handler)
-            return self.__notifier:add_listener(event, handler)
-        end,
         __set = set,
-        __get = get,
-        __value = nil
+        __get = get
     })
 end
 -- #endregion
@@ -242,7 +256,17 @@ M.reactive.METATABLE = {
     end
 }
 
-M.reactive.PROTOTYPE = {}
+M.reactive.PROTOTYPE = {
+    __id = tools.volatile.create(function()
+        return unique_id.generate('reactive')
+    end),
+    __notifier = tools.volatile.create(function()
+        return M.notifier.create(M.responsive_global_notifier)
+    end),
+    __add_listener = function(self, event, handler)
+        return self.__notifier:add_listener(event, handler)
+    end
+}
 
 setmetatable(M.reactive.PROTOTYPE, M.reactive.METATABLE)
 
@@ -267,11 +291,6 @@ M.reactive.create = function(raw_table)
     end
 
     return tools.inherit_prototype(M.reactive.PROTOTYPE, {
-        __id = unique_id.generate('reactive'),
-        __notifier = M.notifier.create(M.responsive_global_notifier),
-        __add_listener = function(self, event, handler)
-            return self.__notifier:add_listener(event, handler)
-        end,
         __raw_table = raw_table
     })
 end
@@ -288,6 +307,15 @@ M.watch.METATABLE = {
     __type = 'kwatch'
 }
 M.watch.PROTOTYPE = {
+    __id = tools.volatile.create(function()
+        unique_id.generate('watch')
+    end),
+    __notifier = tools.volatile.create(function()
+        return M.notifier.create()
+    end),
+    __watch_dispose_list = tools.volatile.create(function()
+        return {}
+    end),
     record = function(self)
         self:reset()
 
@@ -339,11 +367,7 @@ M.watch.PROTOTYPE = {
 setmetatable(M.watch.PROTOTYPE, M.watch.METATABLE)
 
 M.watch.create = function()
-    return tools.inherit_prototype(M.watch.PROTOTYPE, {
-        __id = unique_id.generate('watch'),
-        __notifier = M.notifier.create(),
-        __watch_dispose_list = {}
-    })
+    return tools.inherit_prototype(M.watch.PROTOTYPE, {})
 end
 -- #endregion
 
@@ -356,6 +380,12 @@ M.binding.METATABLE = {
 }
 
 M.binding.PROTOTYPE = {
+    __id = tools.volatile.create(function()
+        return unique_id.generate('binding')
+    end),
+    __watch = tools.volatile.create(function()
+        return M.watch.create()
+    end),
     __dirty = true,
     __first_get = true,
     __value_cache_valid = false,
@@ -462,11 +492,9 @@ M.binding.create = function(data, expression, mode)
     mode = mode or M.binding.MODE.PULL
 
     return tools.inherit_prototype(M.binding.PROTOTYPE, {
-        __id = unique_id.generate('binding'),
         __data = data,
         __expression = expression,
-        __mode = mode,
-        __watch = M.watch.create()
+        __mode = mode
     })
 end
 
