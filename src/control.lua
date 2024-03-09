@@ -50,7 +50,7 @@ local function handle_lua_shortcut(event)
     end
 
     ui_main.data.tick = game.tick
-    update_ui(event.player_index)
+    ui.update(event.player_index)
 end
 
 local function handle_player_create(event)
@@ -65,17 +65,9 @@ local function handle_configuration_change(event)
     init()
 end
 
-local function handle_gui_event(event)
-    log:debug('handle_gui_event')
-    log:debug(event)
-
-    ui.process_event(event)
-    update_ui(event.player_index)
-end
-
 script.on_init(init)
 script.on_event(defines.events.on_lua_shortcut, handle_lua_shortcut)
 script.on_event(defines.events.on_player_created, handle_player_create)
-script.on_event(defines.events.on_gui_click, handle_gui_event)
-script.on_event(defines.events.on_gui_confirmed, handle_gui_event)
+
+ui.initialize(script)
 script.on_configuration_changed(handle_configuration_change)

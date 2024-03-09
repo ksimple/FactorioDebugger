@@ -1,4 +1,5 @@
 local unique_id = require('lib.unique_id')
+local log = require('lib.log').get_log('tools')
 
 local function prevent_recursive(t, k, v, context)
     if not context.processed then
@@ -49,7 +50,11 @@ M.inherit_prototype = function(source, target)
 
     for k, v in pairs(source) do
         if target[k] == nil then
-            target[k] = v
+            if getmetatable(v) == M.volatile.METATABLE then
+                target[k] = v:get()
+            else
+                target[k] = v
+            end
         end
     end
 
@@ -69,15 +74,73 @@ M.table_to_json = function(t)
     return game.table_to_json(M.clone_table(t, remove_function, {}))
 end
 
-M.array = {}
+M.string_starts_with = function(str, start)
+    return str:sub(1, #start) == start
+end
 
-M.array.remove_value = function(t, value)
+M.array_remove_value = function(t, value)
     for i = #t, 1, -1 do
         if t[i] == value then
             table.remove(t, i)
         end
     end
 end
+
+-- #region volatile
+M.volatile = {}
+
+M.volatile.METATABLE = {
+    __type = "kvolatile"
+}
+
+M.volatile.PROTOTYPE = {
+    get = function(self)
+        return self.__get()
+    end
+}
+
+setmetatable(M.volatile.PROTOTYPE, M.volatile.METATABLE)
+
+M.volatile.create = function(get)
+    return M.inherit_prototype(M.volatile.PROTOTYPE, {
+        __id = unique_id.generate('volatile'),
+        __get = get
+    })
+end
+-- #endregion
+
+-- #region cacheable
+M.cacheable = {}
+
+M.cacheable.METATABLE = {
+    __type = "kcacheable"
+}
+
+M.cacheable.PROTOTYPE = {
+    __cache = nil,
+    __valid = false,
+    get = function(self)
+        if not self.__valid then
+            self.__cache = self.__get()
+            self.__valid = true
+        end
+
+        return self.__cache
+    end,
+    reset = function(self)
+        self.__cache = nil
+        self.__valid = false
+    end
+}
+
+setmetatable(M.cacheable.PROTOTYPE, M.cacheable.METATABLE)
+
+M.cacheable.create = function()
+    return M.inherit_prototype(M.cacheable.PROTOTYPE, {
+        __id = unique_id.generate('cacheable')
+    })
+end
+-- #endregion
 
 -- #region disposer
 

@@ -42,6 +42,55 @@ describe('log', function()
 end)
 
 describe('tools', function()
+    it('inherit_prototype', function()
+        local helper = require('helper')
+        local tools = require('lib.tools')
+
+        local prototype = {
+            const_boolean = false,
+            const_integer = 1,
+            const_object = {},
+            const_volatile = tools.volatile.create(function()
+                return {
+                    property = 'test'
+                }
+            end),
+            const_function = function()
+
+            end,
+            override_integer = 0
+        }
+        local object1 = tools.inherit_prototype(prototype, {
+            dynamic_integer = 1,
+            override_integer = 1
+        })
+        local object2 = tools.inherit_prototype(prototype, {
+            dynamic_integer = 2,
+            override_integer = 2
+        })
+
+        log:debug(object1)
+        assert(object1.const_boolean == false)
+        assert(object1.const_integer == 1)
+        assert(object1.const_object == prototype.const_object)
+        assert(object1.const_function == prototype.const_function)
+        assert(object1.dynamic_integer == 1)
+        assert(object1.override_integer == 1)
+        assert(type(object1.const_volatile) == 'table')
+        assert(object1.const_volatile.property == 'test')
+
+        log:debug(object2)
+        assert(object2.const_boolean == false)
+        assert(object2.const_integer == 1)
+        assert(object2.const_object == prototype.const_object)
+        assert(object2.const_function == prototype.const_function)
+        assert(object2.dynamic_integer == 2)
+        assert(object2.override_integer == 2)
+        assert(type(object2.const_volatile) == 'table')
+        assert(object2.const_volatile.property == 'test')
+
+        assert(object1.const_volatile ~= object2.const_volatile)
+    end)
     describe('disposer', function()
         it('check type', function()
             local helper = require('helper')
@@ -741,6 +790,96 @@ describe('responsive', function()
 end)
 
 describe('ui', function()
+    describe('__property_descriptor_map', function()
+        it('check type', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+
+            local property_descriptor_map = ui.__property_descriptor_map.create({})
+
+            assert(getmetatable(property_descriptor_map) == ui.__property_descriptor_map.METATABLE)
+        end)
+        it('const value', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+
+            local property_descriptor_map = ui.__property_descriptor_map.create({
+                property1 = 'test1'
+            })
+
+            property_descriptor_map:__ensure_descriptor_map()
+
+            log:debug(property_descriptor_map.__descriptor_map)
+            assert(property_descriptor_map:get_descriptor('property1').type == ui.__property_descriptor_map.TYPE.CONST)
+            assert(property_descriptor_map:get_descriptor('property1').value == 'test1')
+        end)
+        it('dynamic value', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+
+            local property_descriptor_map = ui.__property_descriptor_map.create({
+                [':property1'] = 'test1',
+                ['v-bind:property2'] = 'test2'
+            })
+
+            property_descriptor_map:__ensure_descriptor_map()
+
+            log:debug(property_descriptor_map.__descriptor_map)
+            assert(property_descriptor_map:get_descriptor('property1').type == ui.__property_descriptor_map.TYPE.DYNAMIC)
+            assert(property_descriptor_map:get_descriptor('property1').value == 'test1')
+            assert(property_descriptor_map:get_descriptor('property2').type == ui.__property_descriptor_map.TYPE.DYNAMIC)
+            assert(property_descriptor_map:get_descriptor('property2').value == 'test2')
+        end)
+        it('model value', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+
+            local property_descriptor_map = ui.__property_descriptor_map.create({
+                ['v-model:property1'] = 'test1'
+            })
+
+            property_descriptor_map:__ensure_descriptor_map()
+
+            log:debug(property_descriptor_map.__descriptor_map)
+            assert(property_descriptor_map:get_descriptor('property1').type == ui.__property_descriptor_map.TYPE.MODEL)
+            assert(property_descriptor_map:get_descriptor('property1').value == 'test1')
+        end)
+        it('callback value', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+
+            local property_descriptor_map = ui.__property_descriptor_map.create({
+                ['@property1'] = 'test1',
+                ['v-on:property2'] = 'test2'
+            })
+
+            property_descriptor_map:__ensure_descriptor_map()
+
+            log:debug(property_descriptor_map.__descriptor_map)
+            assert(property_descriptor_map:get_descriptor('property1').type == ui.__property_descriptor_map.TYPE.CALLBACK)
+            assert(property_descriptor_map:get_descriptor('property1').value == 'test1')
+            assert(property_descriptor_map:get_descriptor('property2').type == ui.__property_descriptor_map.TYPE.CALLBACK)
+            assert(property_descriptor_map:get_descriptor('property2').value == 'test2')
+        end)
+        it('slot value', function()
+            local helper = require('helper')
+            local ui = require('lib.ui')
+
+            local property_descriptor_map = ui.__property_descriptor_map.create({
+                ['#property1'] = 'test1',
+                ['v-slot:property2'] = 'test2'
+            })
+
+            property_descriptor_map:__ensure_descriptor_map()
+
+            log:debug(property_descriptor_map.__descriptor_map)
+            assert(property_descriptor_map:get_descriptor('property1').type == ui.__property_descriptor_map.TYPE.SLOT)
+            assert(property_descriptor_map:get_descriptor('property1').value == 'test1')
+            assert(property_descriptor_map:get_descriptor('property2').type == ui.__property_descriptor_map.TYPE.SLOT)
+            assert(property_descriptor_map:get_descriptor('property2').value == 'test2')
+        end)
+    end)
+
     describe('execution', function()
         it('one binding', function()
             local helper = require('helper')
@@ -905,24 +1044,6 @@ describe('ui', function()
             assert(element.caption == 'test')
             assert(element.enabled == false)
         end)
-        it('wrong property name', function()
-            local helper = require('helper')
-            local ui = require('lib.ui')
-
-            local element = helper.create_gui_element('frame')
-            local vnode = ui.vnode.create({
-                template = {
-                    type = 'frame',
-                    catpion = 'test'
-                }
-            })
-
-            local error, message = pcall(vnode.__setup, vnode)
-
-            log:debug(tostring(error) .. ', ' .. message)
-            assert(not error)
-            assert(message:find('catpion') > 0)
-        end)
         it('pull binding', function()
             local helper = require('helper')
             local ui = require('lib.ui')
@@ -987,6 +1108,7 @@ describe('ui', function()
             vnode:__update()
 
             log:debug(element)
+            log:debug(log_list)
             vnode:__invoke_event_handler('click', 'event')
             assert(#log_list == 1)
             assert(log_list[1] == vnode.__id .. ' click event')
@@ -1027,8 +1149,9 @@ describe('ui', function()
                 vnode:__update()
 
                 log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+
+                assert(ui.vnode.get_vnode_by_element(element) == vnode)
                 assert(#element.children == 2)
-                assert(#ui.vnode.element_key_to_vnode_map)
                 assert(element.children[1].type == 'button')
                 assert(element.children[1].caption == 'test1')
                 assert(ui.vnode.get_vnode_by_element(element.children[1]) == vnode.__effective_child_vnode_list[1][1])

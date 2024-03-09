@@ -1,4 +1,19 @@
-local tools = require('lib.tools')
+local function inherit_prototype(source, target)
+    target = target or {}
+
+    for k, v in pairs(source) do
+        if target[k] == nil then
+            target[k] = v
+        end
+    end
+
+    if getmetatable(source) then
+        setmetatable(target, getmetatable(source))
+    end
+
+    return target
+end
+
 local M = {}
 
 M.LEVEL = {
@@ -38,6 +53,7 @@ M.__log = function(item)
     end
 
     if type(message) == 'table' then
+        local tools = require('lib.tools')
         message = tools.table_to_json(message)
     elseif message == nil then
         message = '<nil>'
@@ -140,11 +156,11 @@ M.output.PROTOTYPE = {
 setmetatable(M.output.PROTOTYPE, M.output.METATABLE)
 
 M.get_log = function(module)
-    return tools.inherit_prototype(M.output.PROTOTYPE, {
+    return inherit_prototype(M.output.PROTOTYPE, {
         __module = module
     })
 end
 
-tools.inherit_prototype(M.output.PROTOTYPE, M)
+inherit_prototype(M.output.PROTOTYPE, M)
 
 return M

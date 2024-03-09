@@ -31,7 +31,7 @@ M.notifier.PROTOTYPE = {
 
         return function()
             self.__listener[event].handler_map[handler_id] = nil
-            tools.array.remove_value(self.__listener[event].handler_id_list, handler_id)
+            tools.array_remove_value(self.__listener[event].handler_id_list, handler_id)
         end
     end,
     emit = function(self, sender, event, ...)

@@ -5,13 +5,140 @@ local responsive = require('lib.responsive')
 
 local M = {}
 
-M.process_event = function(event)
+local function handle_gui_event(event)
+    M.__process_event(event)
+
+    M.update(event.player_index)
+end
+
+M.initialize = function(script)
+    script.on_event(defines.events.on_gui_click, handle_gui_event)
+    script.on_event(defines.events.on_gui_confirmed, handle_gui_event)
+
+    -- TODO: 其他的事件处理
+end
+
+-- TODO: 这个应该是个自动的
+M.update = function(player_index)
+    for _, vnode in pairs(M.vnode.__root_vnode_map) do
+        if vnode.__element.player_index == player_index then
+            vnode:__update()
+        end
+    end
+end
+
+M.__process_event = function(event)
     local vnode = M.vnode.get_vnode_by_element(event.element)
 
     if vnode then
         vnode:__process_event(event)
     end
 end
+
+-- #region __property_descriptor_map
+-- TODO: 这个类的名字考虑改一下
+M.__property_descriptor_map = {}
+
+M.__property_descriptor_map.TYPE = {
+    CONST = 'CONST',
+    DYNAMIC = 'DYNAMIC',
+    MODEL = 'MODEL',
+    CALLBACK = 'CALLBACK',
+    SLOT = 'SLOT'
+}
+
+M.__property_descriptor_map.METATABLE = {
+    __type = 'kvtemplate'
+}
+
+local prefix_map = {
+    [':'] = {
+        type = M.__property_descriptor_map.TYPE.DYNAMIC,
+        length = 2
+    },
+    ['v-bind:'] = {
+        type = M.__property_descriptor_map.TYPE.DYNAMIC,
+        length = 8
+    },
+    ['v-model:'] = {
+        type = M.__property_descriptor_map.TYPE.MODEL,
+        length = 9
+    },
+    ['@'] = {
+        type = M.__property_descriptor_map.TYPE.CALLBACK,
+        length = 2
+    },
+    ['v-on:'] = {
+        type = M.__property_descriptor_map.TYPE.CALLBACK,
+        length = 6
+    },
+    ['#'] = {
+        type = M.__property_descriptor_map.TYPE.SLOT,
+        length = 2
+    },
+    ['v-slot:'] = {
+        type = M.__property_descriptor_map.TYPE.SLOT,
+        length = 8
+    }
+}
+
+M.__property_descriptor_map.PROTOTYPE = {
+    __descriptor_map = nil,
+    __ensure_descriptor_map = function(self)
+        local descriptor_map = {}
+
+        for name, value in pairs(self.__raw) do
+            if not tools.string_starts_with(name, '_') then
+                local descriptorType = M.__property_descriptor_map.TYPE.CONST
+                local descriptorLength = 0
+
+                for prefix, info in pairs(prefix_map) do
+                    if tools.string_starts_with(name, prefix) then
+                        descriptorType = info.type
+                        descriptorLength = info.length
+                        break
+                    end
+                end
+
+                name = string.sub(name, descriptorLength)
+
+                if descriptor_map[name] then
+                    log:warn('duplicate descriptor, name: ' .. name)
+                end
+
+                descriptor_map[name] = {
+                    type = descriptorType,
+                    value = value
+                }
+            end
+        end
+
+        self.__descriptor_map = descriptor_map
+    end,
+    get_descriptor = function(self, name)
+        if not self.__descriptor_map then
+            self:__ensure_descriptor_map()
+        end
+
+        return self.__descriptor_map[name]
+    end,
+    get_descriptor_map = function(self)
+        return self.__descriptor_map
+    end,
+    get_raw = function(self)
+        return self.__raw
+    end
+}
+
+setmetatable(M.__property_descriptor_map.PROTOTYPE, M.__property_descriptor_map.METATABLE)
+
+M.__property_descriptor_map.create = function(template)
+    return tools.inherit_prototype(M.__property_descriptor_map.PROTOTYPE, {
+        __id = unique_id.generate('template'),
+        __raw = template
+    })
+end
+-- #endregion
 
 -- #region vstyle
 M.vstyle = {}
@@ -64,30 +191,29 @@ M.vstyle.STYLE_PROPERTY_NAME_LIST = {'minimal_width', 'maximal_width', 'minimal_
 M.vstyle.PROTOTYPE = {
     __setup = function(self)
         local data = self.__vnode.__data
-        local template = self.__vnode.__template
         local property_execution_list = {}
 
-        if not template.style then
+        if not self.__vnode.__template:get_raw().style then
             return
         end
 
-        if self.__vnode.type == 'frame' then
-            for _, name in ipairs(M.vstyle.STYLE_PROPERTY_NAME_LIST) do
-                if template.style[':' .. name] then
-                    local binding = responsive.binding.create(data, template.style[':' .. name],
-                        responsive.binding.MODE.PULL)
+        for _, name in ipairs(M.vstyle.STYLE_PROPERTY_NAME_LIST) do
+            local descriptor = self.__template:get_descriptor(name)
+
+            if descriptor then
+                if descriptor.type == M.__property_descriptor_map.TYPE.DYNAMIC then
+                    local binding = responsive.binding.create(data, descriptor.value, responsive.binding.MODE.PULL)
                     local execution = M.execution.create_value_execution(binding, function(execution, value)
                         log:trace('设置 ' .. name .. ': ' .. value)
                         self[name] = value
                     end)
 
                     table.insert(property_execution_list, execution)
-                elseif template.style[name] then
-                    local execution = M.execution.create_value_execution(template.style[name],
-                        function(execution, value)
-                            log:trace('设置 ' .. name .. ': ' .. value)
-                            self[name] = value
-                        end)
+                elseif descriptor.type == M.__property_descriptor_map.TYPE.CONST then
+                    local execution = M.execution.create_value_execution(descriptor.value, function(execution, value)
+                        log:trace('设置 ' .. name .. ': ' .. value)
+                        self[name] = value
+                    end)
 
                     table.insert(property_execution_list, execution)
                 end
@@ -113,6 +239,7 @@ M.vstyle.create = function(vnode)
     return tools.inherit_prototype(M.vstyle.PROTOTYPE, {
         __id = unique_id.generate('vstyle'),
         __vnode = vnode,
+        __template = M.__property_descriptor_map.create(vnode.__template:get_raw().style),
         __property_table = {},
         __property_execution_list = {}
     })
@@ -498,7 +625,9 @@ M.vnode.EVENT_MAP = {
     click = true
 }
 
-M.vnode.element_key_to_vnode_map = {}
+M.vnode.__element_key_to_vnode_map = {}
+
+M.vnode.__root_vnode_map = {}
 
 M.vnode.get_element_key = function(element)
     return string.format('%d_%d', element.player_index, element.index)
@@ -507,14 +636,14 @@ end
 M.vnode.get_vnode_by_element = function(element)
     local element_key = M.vnode.get_element_key(element)
 
-    return M.vnode.element_key_to_vnode_map[element_key]
+    return M.vnode.__element_key_to_vnode_map[element_key]
 end
 
 M.vnode.PROTOTYPE = {
     __disposed = false,
-    __template = nil,
+    __binding_descriptor_map = nil,
     __get_type = function(self)
-        return self.__template and self.__template.type or nil
+        return self.__template and self.__template:get_raw().type or nil
     end,
     __get_parent_element = function(self)
         if self.__parent_vnode.__element then
@@ -525,6 +654,11 @@ M.vnode.PROTOTYPE = {
     end,
     __get_effective_vnode_list = function(self)
         error('not implemented')
+    end,
+    __ensure_binding_descriptor_map = function(self)
+        local binding_descriptor_map = M.__generate_binding_descriptor_map(self.__template)
+
+        self.__binding_descriptor_map = binding_descriptor_map
     end,
     __setup = function(self)
         error('not implemented')
@@ -545,6 +679,7 @@ M.vnode.PROTOTYPE = {
 
 setmetatable(M.vnode.PROTOTYPE, M.vnode.METATABLE)
 
+-- TODO: tab 的特殊处理逻辑
 M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
     -- #region children processing
     __ensure_child_vnode_list = function(self)
@@ -554,8 +689,8 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
 
         local child_vnode_list = {}
 
-        if (self.__template.children) then
-            for index, child in ipairs(self.__template.children) do
+        if (self.__template:get_raw().children) then
+            for index, child in ipairs(self.__template:get_raw().children) do
                 child_vnode_list[index] = M.vnode.create({
                     parent = self,
                     template = child,
@@ -641,6 +776,7 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
         if event.name == defines.events.on_gui_click then
             self:__invoke_event_handler('click', event)
         elseif event.name == defines.events.on_gui_confirmed then
+            -- TODO: 支持双向绑定的后缀 .lazy .number .trim
             if self.__property_binding_map['text'] then
                 self.__property_binding_map['text']:set(event.element.text)
             end
@@ -648,12 +784,16 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
         end
     end,
     __invoke_event_handler = function(self, name, event)
-        if self.__template['@' .. name] then
-            local func = load('return ' .. self.__template['@' .. name], nil, 't', responsive.unref(self.__data))()
+        -- TODO: 支持一些事件后缀 .stop .prevent .self .once .passive
+        local descriptor = self.__template:get_descriptor(name)
+        local func
 
-            if func then
-                func(self, name, event)
-            end
+        if descriptor and descriptor.type == M.__property_descriptor_map.TYPE.CALLBACK then
+            func = load('return ' .. descriptor.value, nil, 't', responsive.unref(self.__data))()
+        end
+
+        if func then
+            func(self, name, event)
         end
     end,
     -- #endregion
@@ -666,54 +806,48 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
             error('wrong stage, stage: ' .. self.__stage)
         end
         local data = self.__data
-        local template = self.__template
-        local element = self.__element
         local property_execution_list = {}
         local property_binding_map = {}
-
-        for name, _ in pairs(template) do
-            if name:sub(1, 1) == ':' or name:sub(1, 1) == '@' or name:sub(1, 1) == '#' then
-                name = name:sub(2)
-            end
-            if not M.vnode.ELEMENT_PROPERTY_DEFINITION[name] and not M.vnode.EVENT_MAP[name] and name ~= 'type' and name ~=
-                'style' and name ~= 'children' and name ~= 'data' then
-                error('wrong property name in template, name: ' .. name)
-            end
-        end
 
         if M.vnode.ELEMENT_TYPE_MAP[self.type] then
             for name, definition in pairs(M.vnode.ELEMENT_PROPERTY_DEFINITION) do
                 if definition.write then
                     -- TODO: 增加双向绑定的测试用例
-                    if template[':' .. name] then
-                        -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
-                        local binding = responsive.binding.create(data, template[':' .. name],
-                            responsive.binding.MODE.PULL)
-                        local execution = M.execution.create_value_execution(binding, function(execution, value)
-                            log:trace('设置 ' .. name .. ': ' .. tostring(value))
-                            self[name] = value
-                        end)
 
-                        table.insert(property_execution_list, execution)
-                    elseif template['#' .. name] then
-                        -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
-                        local binding = responsive.binding.create(data, template['#' .. name],
-                            responsive.binding.MODE.PULL_AND_PUSH)
-                        local execution = M.execution.create_value_execution(binding, function(execution, value)
-                            log:trace('设置 ' .. name .. ': ' .. tostring(value))
-                            self[name] = value
-                        end)
+                    local descriptor = self.__template:get_descriptor(name)
 
-                        table.insert(property_execution_list, execution)
-                        property_binding_map[name] = binding
-                    elseif template[name] ~= nil then
-                        -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
-                        local execution = M.execution.create_value_execution(template[name], function(execution, value)
-                            log:trace('设置 ' .. name .. ': ' .. tostring(value))
-                            self[name] = value
-                        end)
+                    if descriptor then
+                        if descriptor.type == M.__property_descriptor_map.TYPE.DYNAMIC then
+                            -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
+                            local binding = responsive.binding.create(data, descriptor.value,
+                                responsive.binding.MODE.PULL)
+                            local execution = M.execution.create_value_execution(binding, function(execution, value)
+                                log:trace('设置 ' .. name .. ': ' .. tostring(value))
+                                self[name] = value
+                            end)
 
-                        table.insert(property_execution_list, execution)
+                            table.insert(property_execution_list, execution)
+                        elseif descriptor.type == M.__property_descriptor_map.TYPE.MODEL then
+                            -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
+                            local binding = responsive.binding.create(data, descriptor.value,
+                                responsive.binding.MODE.PULL_AND_PUSH)
+                            local execution = M.execution.create_value_execution(binding, function(execution, value)
+                                log:trace('设置 ' .. name .. ': ' .. tostring(value))
+                                self[name] = value
+                            end)
+
+                            table.insert(property_execution_list, execution)
+                            property_binding_map[name] = binding
+                        elseif descriptor.type == M.__property_descriptor_map.TYPE.CONST then
+                            -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
+                            local execution = M.execution.create_value_execution(descriptor.value,
+                                function(execution, value)
+                                    log:trace('设置 ' .. name .. ': ' .. tostring(value))
+                                    self[name] = value
+                                end)
+
+                            table.insert(property_execution_list, execution)
+                        end
                     end
                 end
             end
@@ -791,7 +925,10 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
         end
 
         rawset(self, '__element', element)
-        M.vnode.element_key_to_vnode_map[M.vnode.get_element_key(element)] = self
+        M.vnode.__element_key_to_vnode_map[M.vnode.get_element_key(element)] = self
+        if not self.__parent_vnode then
+            M.vnode.__root_vnode_map[self.__id] = self
+        end
         rawset(self, '__stage', M.vnode.STAGE.UPDATE)
     end,
     __update = function(self)
@@ -834,7 +971,10 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
         end
 
         if self.__element then
-            M.vnode.element_key_to_vnode_map[M.vnode.get_element_key(self.__element)] = nil
+            M.vnode.__element_key_to_vnode_map[M.vnode.get_element_key(self.__element)] = nil
+            if not self.__parent_vnode then
+                M.vnode.__root_vnode_map[self.__id] = nil
+            end
         end
 
         rawset(self, '__element', nil)
@@ -847,15 +987,17 @@ M.vnode.COMPONENT_PROTOTYPE = tools.inherit_prototype(M.vnode.PROTOTYPE, {
     -- #region children processing
     __child_template_root_vnode = nil,
     __ensure_child_vnode_list = function(self)
-        local component_factory = M.component.get_factory():get_component_factory(self.__template.name)
-        local data
-        if self.__template[':data'] then
-            data = responsive.computed.create(load('return ' .. self.__template[':data'], nil, 't',
-                responsive.unref(self.__data)))
-        elseif self.__template.data then
-            data = self.__template.data
-        else
-            data = {}
+        local component_factory = M.component.get_factory():get_component_factory(self.__template:get_raw().name)
+        local data_descripter = self.__template:get_descriptor('data')
+        local data = {}
+
+        if data_descripter then
+            if data_descripter.type == M.__property_descriptor_map.TYPE.DYNAMIC then
+                data = responsive.computed.create(load('return ' .. data_descripter.value, nil, 't',
+                    responsive.unref(self.__data)))
+            elseif data_descripter.type == M.__property_descriptor_map.TYPE.CONST then
+                data = data_descripter.value
+            end
         end
         rawset(self, '__child_template_root_vnode', component_factory:get({
             parent = self,
@@ -1004,7 +1146,7 @@ M.vnode.create = function(definition)
     local vnode = tools.inherit_prototype(M.vnode.ELEMENT_TYPE_MAP[template.type].prototype, {
         __id = unique_id.generate('vnode'),
         __definition = definition,
-        __template = template,
+        __template = M.__property_descriptor_map.create(template),
         __data = data,
         __parent_vnode = parent_vnode,
         __element = nil,
