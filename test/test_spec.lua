@@ -273,12 +273,12 @@ describe('responsive', function()
             local ref = responsive.ref.create()
             local log_list = {}
 
-            ref:__add_listener(responsive.EVENT.PROPERTY_READ, function(reactive, event, name, old_value, new_value)
-                table.insert(log_list, event .. ' ' .. name)
+            ref:__add_listener(responsive.EVENT.PROPERTY_READ, function(reactive, event, context)
+                table.insert(log_list, event .. ' ' .. context.name)
             end)
 
-            ref:__add_listener(responsive.EVENT.PROPERTY_CHANGED, function(reactive, event, name, old_value, new_value)
-                table.insert(log_list, event .. ' ' .. name)
+            ref:__add_listener(responsive.EVENT.PROPERTY_CHANGED, function(reactive, event, context)
+                table.insert(log_list, event .. ' ' .. context.name)
             end)
 
             ref.value = 'test1'
@@ -302,18 +302,17 @@ describe('responsive', function()
             local log_list = {}
 
             local remove_listener = ref:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
-                function(responsive, event, name, old_value, new_value)
-                    table.insert(log_list, event .. ' ' .. name)
+                function(responsive, event, context)
+                    table.insert(log_list, event .. ' ' .. context.name)
                 end)
 
             remove_listener()
 
             ref.value = 'test1'
 
-            ref:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
-                function(responsive, event, name, old_value, new_value)
-                    table.insert(log_list, event .. ' ' .. name)
-                end)
+            ref:__add_listener(responsive.EVENT.PROPERTY_CHANGED, function(responsive, event, context)
+                table.insert(log_list, event .. ' ' .. context.name)
+            end)
 
             ref.value = 'test2'
 
@@ -385,15 +384,13 @@ describe('responsive', function()
             end)
             local log_list = {}
 
-            computed:__add_listener(responsive.EVENT.PROPERTY_READ,
-                function(reactive, event, name, old_value, new_value)
-                    table.insert(log_list, event .. ' ' .. name)
-                end)
+            computed:__add_listener(responsive.EVENT.PROPERTY_READ, function(reactive, event, context)
+                table.insert(log_list, event .. ' ' .. context.name)
+            end)
 
-            computed:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
-                function(reactive, event, name, old_value, new_value)
-                    table.insert(log_list, event .. ' ' .. name)
-                end)
+            computed:__add_listener(responsive.EVENT.PROPERTY_CHANGED, function(reactive, event, context)
+                table.insert(log_list, event .. ' ' .. context.name)
+            end)
 
             computed.value = 'test1_changed'
             local value_read = computed.value
@@ -417,18 +414,17 @@ describe('responsive', function()
             local log_list = {}
 
             local remove_listener = computed:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
-                function(responsive, event, name, old_value, new_value)
-                    table.insert(log_list, event .. ' ' .. name)
+                function(responsive, event, context)
+                    table.insert(log_list, event .. ' ' .. context.name)
                 end)
 
             remove_listener()
 
             computed.value = 'test1_changed'
 
-            computed:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
-                function(responsive, event, name, old_value, new_value)
-                    table.insert(log_list, event .. ' ' .. name)
-                end)
+            computed:__add_listener(responsive.EVENT.PROPERTY_CHANGED, function(responsive, event, context)
+                table.insert(log_list, event .. ' ' .. context.name)
+            end)
 
             computed.value = 'test2'
 
@@ -511,8 +507,56 @@ describe('responsive', function()
 
             reactive2.property1 = 'test2'
 
+            log:debug(reactive1)
+            log:debug(reactive2)
             assert(reactive1.property1 == 'test1')
             assert(reactive2.property1 == 'test2')
+        end)
+        it('get and set integer index', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local reactive1 = responsive.reactive.create({'test11'})
+            local reactive2 = responsive.reactive.create()
+
+            reactive1[2] = 'test12'
+            reactive2[1] = 'test21'
+            reactive2[2] = 'test22'
+
+            log:debug(reactive1)
+            log:debug(reactive2)
+            assert(#reactive1 == 2)
+            assert(#reactive2 == 2)
+            assert(reactive1[1] == 'test11')
+            assert(reactive1[2] == 'test12')
+            assert(reactive2[1] == 'test21')
+            assert(reactive2[2] == 'test22')
+        end)
+        it('ipairs', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local reactive = responsive.reactive.create({'test1', 'test2', 'test3'})
+            local log_list = {}
+
+            for index, value in ipairs(reactive) do
+                table.insert(log_list, index .. ' ' .. value)
+            end
+
+            log:debug(log_list)
+            assert(#log_list == 3)
+            assert(log_list[1] == '1 test1')
+            assert(log_list[2] == '2 test2')
+            assert(log_list[3] == '3 test3')
+        end)
+        it('pairs', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local reactive = responsive.reactive.create({'test1', 'test2', 'test3'})
+            local log_list = {}
+
+            -- TODO: 添加逻辑
         end)
         it('ref get and set', function()
             local helper = require('helper')
@@ -543,15 +587,13 @@ describe('responsive', function()
             local reactive = responsive.reactive.create()
             local log_list = {}
 
-            reactive:__add_listener(responsive.EVENT.PROPERTY_READ,
-                function(reactive, event, name, old_value, new_value)
-                    table.insert(log_list, event .. ' ' .. name)
-                end)
+            reactive:__add_listener(responsive.EVENT.PROPERTY_READ, function(reactive, event, context)
+                table.insert(log_list, event .. ' ' .. context.name)
+            end)
 
-            reactive:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
-                function(reactive, event, name, old_value, new_value)
-                    table.insert(log_list, event .. ' ' .. name)
-                end)
+            reactive:__add_listener(responsive.EVENT.PROPERTY_CHANGED, function(reactive, event, context)
+                table.insert(log_list, event .. ' ' .. context.name)
+            end)
 
             reactive.property1 = 'test1'
             local property1 = reactive.property1
@@ -569,18 +611,17 @@ describe('responsive', function()
             local log_list = {}
 
             local remove_listener = reactive1:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
-                function(responsive, event, name, old_value, new_value)
-                    table.insert(log_list, event .. ' ' .. name)
+                function(responsive, event, context)
+                    table.insert(log_list, event .. ' ' .. context.name)
                 end)
 
             remove_listener()
 
             reactive1.property1 = 'test1'
 
-            reactive1:__add_listener(responsive.EVENT.PROPERTY_CHANGED,
-                function(responsive, event, name, old_value, new_value)
-                    table.insert(log_list, event .. ' ' .. name)
-                end)
+            reactive1:__add_listener(responsive.EVENT.PROPERTY_CHANGED, function(responsive, event, context)
+                table.insert(log_list, event .. ' ' .. context.name)
+            end)
 
             reactive1.property1 = 'test2'
 
@@ -656,10 +697,8 @@ describe('responsive', function()
             local ref = responsive.ref.create('test1')
             local log_list = {}
 
-            watch:add_listener(responsive.EVENT.PROPERTY_CHANGED, function(sender, event, name, old_value, new_value)
-                table.insert(log_list,
-                    sender.__id .. ' ' .. event .. ' ' .. name .. ' ' .. tostring(old_value) .. ' ' ..
-                        tostring(new_value))
+            watch:add_listener(responsive.EVENT.PROPERTY_CHANGED, function(sender, event, context)
+                table.insert(log_list, sender.__id .. ' ' .. event .. ' ' .. context.name)
             end)
             watch:record()
             local property1 = reactive.property1
@@ -672,13 +711,13 @@ describe('responsive', function()
             reactive.property1 = 'test1_changed'
             ref.value = 'test1_changed'
 
-            log:debug(tools.table_to_json(log_list))
+            log:debug(log_list)
 
             assert(responsive.responsive_global_notifier:get_listener_count(responsive.EVENT.PROPERTY_READ) == 0)
             assert(reactive.__notifier:get_listener_count(responsive.EVENT.PROPERTY_CHANGED) == 1)
             assert(#log_list == 2)
-            assert(log_list[1] == reactive.__id .. ' property_changed property1 test1 test1_changed')
-            assert(log_list[2] == ref.__id .. ' property_changed value test1 test1_changed')
+            assert(log_list[1] == reactive.__id .. ' property_changed property1')
+            assert(log_list[2] == ref.__id .. ' property_changed value')
         end)
         it('reset', function()
             local helper = require('helper')

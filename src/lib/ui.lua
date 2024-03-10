@@ -907,7 +907,6 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
         rawset(self, '__effective_child_vnode_execution_list', effective_child_vnode_execution_list)
         rawset(self, '__effective_child_vnode_execution', M.execution.create_value_execution(responsive.binding.create(
             responsive.computed.create(function()
-                log:trace(string.format('effective_child_vnode_list pull, vnode: %s', self.__id))
                 local effective_child_vnode_flat_list = {}
 
                 for index = 1, #self.__child_vnode_list do
@@ -918,7 +917,10 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
                     end
                 end
 
-                log:trace(string.format('effective_child_vnode_list pull, vnode: %s, done', self.__id))
+                log:trace(string.format(
+                    'effective_child_vnode_flat_list changed, vnode: %s, #effective_child_vnode_flat_list: %d',
+                    self.__id, #effective_child_vnode_flat_list))
+
                 return {
                     data = effective_child_vnode_flat_list
                 }
@@ -1245,7 +1247,7 @@ M.component.__component_factory_map = {}
 M.component.factory = {}
 
 M.component.factory.METATABLE = {
-    __type = 'kcomponent_factory'
+    __type = 'kcomponentfactory'
 }
 
 M.component.factory.PROTOTYPE = {
