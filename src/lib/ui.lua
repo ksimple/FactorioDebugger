@@ -703,25 +703,23 @@ setmetatable(M.vnode.PROTOTYPE, M.vnode.METATABLE)
 -- TODO: tab 的特殊处理逻辑
 M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
     -- #region children processing
-    __ensure_child_vnode_list = function(self)
-        if self.__child_vnode_list then
-            return
-        end
+    __child_vnode_list = tools.volatile.create(function()
+        return tools.cacheable.create(function(self)
+            local child_vnode_list = {}
 
-        local child_vnode_list = {}
-
-        if (self.__template.children) then
-            for index, child in ipairs(self.__template.children) do
-                child_vnode_list[index] = M.vnode.create({
-                    parent = self,
-                    template = child,
-                    data = self.__data
-                })
+            if (self.__template.children) then
+                for index, child in ipairs(self.__template.children) do
+                    child_vnode_list[index] = M.vnode.create({
+                        parent = self,
+                        template = child,
+                        data = self.__data
+                    })
+                end
             end
-        end
 
-        rawset(self, '__child_vnode_list', child_vnode_list)
-    end,
+            return child_vnode_list
+        end)
+    end),
     __get_effective_vnode_list_binding = function(self)
         return responsive.binding.create({
             data = {self}
@@ -890,15 +888,14 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
 
         self.__style:__setup()
 
-        self:__ensure_child_vnode_list()
-        for _, vnode in ipairs(self.__child_vnode_list) do
+        for _, vnode in ipairs(self.__child_vnode_list:get(self)) do
             vnode:__setup()
         end
 
         local effective_child_vnode_execution_list = {}
         rawset(self, '__effective_child_vnode_list', responsive.reactive.create({}))
 
-        for child_vnode_index, child_vnode in ipairs(self.__child_vnode_list) do
+        for child_vnode_index, child_vnode in ipairs(self.__child_vnode_list:get(self)) do
             table.insert(effective_child_vnode_execution_list,
                 M.execution.create_value_execution(child_vnode:__get_effective_vnode_list_binding(),
                     function(execution, effective_child_vnode_list)
@@ -913,7 +910,7 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
             responsive.computed.create(function()
                 local effective_child_vnode_flat_list = {}
 
-                for index = 1, #self.__child_vnode_list do
+                for index = 1, #self.__child_vnode_list:get(self) do
                     if self.__effective_child_vnode_list[index] then
                         for _, effective_child_vnode in ipairs(self.__effective_child_vnode_list[index]) do
                             table.insert(effective_child_vnode_flat_list, effective_child_vnode)
@@ -983,7 +980,7 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
             self.__effective_child_vnode_execution:process()
         end
 
-        for index = 1, #self.__child_vnode_list do
+        for index = 1, #self.__child_vnode_list:get(self) do
             if self.__effective_child_vnode_list[index] then
                 for _, effective_child_vnode in ipairs(self.__effective_child_vnode_list[index]) do
                     effective_child_vnode:__update()
@@ -1011,35 +1008,32 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
 })
 
 M.vnode.COMPONENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
-    __child_vnode_list = nil,
-    __ensure_child_vnode_list = function(self)
-        if self.__child_vnode_list then
-            return
-        end
+    __child_vnode_list = tools.volatile.create(function()
+        return tools.cacheable.create(function(self)
+            local component_factory = M.component.get_factory():get_component_factory(self.__template.name)
+            local data_descripter = self.__property_descriptor_map:get_descriptor('data')
+            local data = {}
 
-        local component_factory = M.component.get_factory():get_component_factory(self.__template.name)
-        local data_descripter = self.__property_descriptor_map:get_descriptor('data')
-        local data = {}
-
-        if data_descripter then
-            if data_descripter.type == M.__propertydescriptormap.TYPE.DYNAMIC then
-                data = responsive.computed.create(load('return ' .. data_descripter.value, nil, 't',
-                    responsive.unref(self.__data)))
-            elseif data_descripter.type == M.__propertydescriptormap.TYPE.CONST then
-                data = data_descripter.value
+            if data_descripter then
+                if data_descripter.type == M.__propertydescriptormap.TYPE.DYNAMIC then
+                    data = responsive.computed.create(load('return ' .. data_descripter.value, nil, 't',
+                        responsive.unref(self.__data)))
+                elseif data_descripter.type == M.__propertydescriptormap.TYPE.CONST then
+                    data = data_descripter.value
+                end
             end
-        end
 
-        rawset(self, '__child_vnode_list', {component_factory:get({
-            parent = self,
-            data = data
-        })})
-    end,
+            return {component_factory:get({
+                parent = self,
+                data = data
+            })}
+        end)
+    end),
     __get_effective_vnode_list_binding = function(self)
         log:trace(string.format('call get_effective_vnode_list_binding, vnode: %s', self.__id))
 
         return responsive.binding.create({
-            data = self.__child_vnode_list
+            data = self.__child_vnode_list:get(self)
         }, 'data', responsive.binding.MODE.ONE_TIME)
     end,
 
@@ -1055,11 +1049,10 @@ M.vnode.COMPONENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
             error('wrong stage, stage: ' .. self.__stage)
         end
 
-        self:__ensure_child_vnode_list()
-        for _, vnode in ipairs(self.__child_vnode_list) do
+        for _, vnode in ipairs(self.__child_vnode_list:get(self)) do
             vnode:__setup()
         end
-        
+
         rawset(self, '__stage', M.vnode.STAGE.DONE)
     end,
     __mount = function(self, element)
@@ -1075,31 +1068,13 @@ M.vnode.COMPONENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
 })
 
 M.vnode.SLOT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
-    __child_vnode_list = nil,
-    __ensure_child_vnode_list = function(self)
-        local component_factory = M.component.get_factory():get_component_factory(self.__template.name)
-        local data_descripter = self.__property_descriptor_map:get_descriptor('data')
-        local data = {}
-
-        if data_descripter then
-            if data_descripter.type == M.__propertydescriptormap.TYPE.DYNAMIC then
-                data = responsive.computed.create(load('return ' .. data_descripter.value, nil, 't',
-                    responsive.unref(self.__data)))
-            elseif data_descripter.type == M.__propertydescriptormap.TYPE.CONST then
-                data = data_descripter.value
-            end
-        end
-        rawset(self, '__child_vnode_list', component_factory:get({
-            parent = self,
-            data = data
-        }))
-    end,
+    __child_vnode_list = tools.volatile.create(function()
+        return tools.cacheable.create(function(self)
+            return {}
+        end)
+    end),
     __get_effective_vnode_list_binding = function(self)
         log:trace(string.format('call get_effective_vnode_list_binding, vnode: %s', self.__id))
-
-        return responsive.binding.create({
-            data = {self.__child_vnode_list}
-        }, 'data', responsive.binding.MODE.ONE_TIME)
     end,
 
     __dispose = function(self)
@@ -1114,7 +1089,6 @@ M.vnode.SLOT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
             error('wrong stage, stage: ' .. self.__stage)
         end
 
-        self:__ensure_child_vnode_list()
         rawset(self, '__stage', M.vnode.STAGE.DONE)
     end,
     __mount = function(self, element)
