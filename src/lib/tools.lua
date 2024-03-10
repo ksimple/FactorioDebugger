@@ -135,9 +135,9 @@ M.cacheable.METATABLE = {
 M.cacheable.PROTOTYPE = {
     __cache = nil,
     __valid = false,
-    get = function(self)
+    get = function(self, ...)
         if not self.__valid then
-            self.__cache = self.__get()
+            self.__cache = self.__get(...)
             self.__valid = true
         end
 
@@ -151,9 +151,10 @@ M.cacheable.PROTOTYPE = {
 
 setmetatable(M.cacheable.PROTOTYPE, M.cacheable.METATABLE)
 
-M.cacheable.create = function()
+M.cacheable.create = function(get)
     return M.inherit_prototype(M.cacheable.PROTOTYPE, {
-        __id = unique_id.generate('cacheable')
+        __id = unique_id.generate('cacheable'),
+        __get = get
     })
 end
 -- #endregion

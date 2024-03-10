@@ -891,6 +891,10 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
         self.__style:__setup()
 
         self:__ensure_child_vnode_list()
+        for _, vnode in ipairs(self.__child_vnode_list) do
+            vnode:__setup()
+        end
+
         local effective_child_vnode_execution_list = {}
         rawset(self, '__effective_child_vnode_list', responsive.reactive.create({}))
 
@@ -1007,8 +1011,12 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
 })
 
 M.vnode.COMPONENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
-    __child_template_root_vnode = nil,
+    __child_vnode_list = nil,
     __ensure_child_vnode_list = function(self)
+        if self.__child_vnode_list then
+            return
+        end
+
         local component_factory = M.component.get_factory():get_component_factory(self.__template.name)
         local data_descripter = self.__property_descriptor_map:get_descriptor('data')
         local data = {}
@@ -1021,17 +1029,17 @@ M.vnode.COMPONENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
                 data = data_descripter.value
             end
         end
-        rawset(self, '__child_template_root_vnode', component_factory:get({
+
+        rawset(self, '__child_vnode_list', {component_factory:get({
             parent = self,
             data = data
-        }))
+        })})
     end,
     __get_effective_vnode_list_binding = function(self)
         log:trace(string.format('call get_effective_vnode_list_binding, vnode: %s', self.__id))
-        self:__ensure_child_vnode_list()
 
         return responsive.binding.create({
-            data = {self.__child_template_root_vnode}
+            data = self.__child_vnode_list
         }, 'data', responsive.binding.MODE.ONE_TIME)
     end,
 
@@ -1047,9 +1055,15 @@ M.vnode.COMPONENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
             error('wrong stage, stage: ' .. self.__stage)
         end
 
+        self:__ensure_child_vnode_list()
+        for _, vnode in ipairs(self.__child_vnode_list) do
+            vnode:__setup()
+        end
+        
         rawset(self, '__stage', M.vnode.STAGE.DONE)
     end,
     __mount = function(self, element)
+        -- TODO: Component 是允许 mount 的，直接给第一个子节点做
         error('component cannot mounte to element')
     end,
     __update = function(self)
@@ -1061,7 +1075,7 @@ M.vnode.COMPONENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
 })
 
 M.vnode.SLOT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
-    __child_template_root_vnode = nil,
+    __child_vnode_list = nil,
     __ensure_child_vnode_list = function(self)
         local component_factory = M.component.get_factory():get_component_factory(self.__template.name)
         local data_descripter = self.__property_descriptor_map:get_descriptor('data')
@@ -1075,17 +1089,16 @@ M.vnode.SLOT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
                 data = data_descripter.value
             end
         end
-        rawset(self, '__child_template_root_vnode', component_factory:get({
+        rawset(self, '__child_vnode_list', component_factory:get({
             parent = self,
             data = data
         }))
     end,
     __get_effective_vnode_list_binding = function(self)
         log:trace(string.format('call get_effective_vnode_list_binding, vnode: %s', self.__id))
-        self:__ensure_child_vnode_list()
 
         return responsive.binding.create({
-            data = {self.__child_template_root_vnode}
+            data = {self.__child_vnode_list}
         }, 'data', responsive.binding.MODE.ONE_TIME)
     end,
 
@@ -1101,6 +1114,7 @@ M.vnode.SLOT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
             error('wrong stage, stage: ' .. self.__stage)
         end
 
+        self:__ensure_child_vnode_list()
         rawset(self, '__stage', M.vnode.STAGE.DONE)
     end,
     __mount = function(self, element)
@@ -1220,20 +1234,21 @@ M.vnode.create = function(definition)
 
     local data = definition.data
     local parent_vnode = definition.parent
+    local slot_factory = definition.slot_factory
     local vnode = tools.inherit_prototype(M.vnode.ELEMENT_TYPE_MAP[template.type].prototype, {
         __property_descriptor_map = M.__propertydescriptormap.create(template),
         __template = template,
         __data = data,
-        __parent_vnode = parent_vnode
+        __parent_vnode = parent_vnode,
+        __slot_factory = slot_factory
     })
 
     if M.vnode.ELEMENT_TYPE_MAP[template.type].vstyle then
         rawset(vnode, '__style', M.vstyle.create(vnode))
+        vnode.__disposer:add(function()
+            vnode.__style:dispose()
+        end)
     end
-
-    vnode.__disposer:add(function()
-        vnode.__style:dispose()
-    end)
 
     return vnode
 end
