@@ -196,12 +196,13 @@ M.vstyle.PROTOTYPE = {
     __property_table = tools.volatile.create(function()
         return {}
     end),
-    __property_execution_list = tools.volatile.create(function()
+    -- TODO: 改成使用 updater collection
+    __property_updater_list = tools.volatile.create(function()
         return {}
     end),
     __setup = function(self)
         local data = self.__vnode.__data
-        local property_execution_list = {}
+        local property_updater_list = {}
 
         if not self.__vnode.__template.style then
             return
@@ -213,31 +214,29 @@ M.vstyle.PROTOTYPE = {
             if descriptor then
                 if descriptor.type == M.__propertydescriptormap.TYPE.DYNAMIC then
                     local binding = responsive.binding.create(data, descriptor.value, responsive.binding.MODE.PULL)
-                    local execution = M.execution.create_value_execution(binding, function(execution, value)
+                    local updater = M.updater.create(binding, function(value)
                         log:trace('设置 ' .. name .. ': ' .. value)
                         self[name] = value
                     end)
 
-                    table.insert(property_execution_list, execution)
+                    table.insert(property_updater_list, updater)
                 elseif descriptor.type == M.__propertydescriptormap.TYPE.CONST then
-                    local execution = M.execution.create_value_execution(descriptor.value, function(execution, value)
+                    local updater = M.updater.create(descriptor.value, function(value)
                         log:trace('设置 ' .. name .. ': ' .. value)
                         self[name] = value
                     end)
 
-                    table.insert(property_execution_list, execution)
+                    table.insert(property_updater_list, updater)
                 end
             end
         end
 
-        rawset(self, '__property_execution_list', property_execution_list)
+        rawset(self, '__property_updater_list', property_updater_list)
     end,
     __update = function(self)
-        if self.__property_execution_list then
-            for _, execution in ipairs(self.__property_execution_list) do
-                if execution:dirty() then
-                    execution:process()
-                end
+        if self.__property_updater_list then
+            for _, updater in ipairs(self.__property_updater_list) do
+                updater:update()
             end
         end
     end
@@ -253,56 +252,118 @@ M.vstyle.create = function(vnode)
 end
 -- #endregion
 
--- #region execution
--- TODO: 考虑改名字叫 Updater
-M.execution = {}
+-- #region updater
+M.updater = {}
 
-M.execution.create = function(process, dirty, dispose, tag)
-    local execution = {
-        __id = unique_id.generate('execution'),
-        dirty = dirty,
-        process = process,
-        dispose = dispose,
-        tag = tag
-    }
+M.updater.METATABLE = {
+    __type = 'kupdater'
+}
 
-    return execution
-end
-
-M.execution.value_execution = {
+M.updater.PROTOTYPE = {
     dirty = function(self)
-        if getmetatable(self.tag.value) == responsive.binding.METATABLE then
-            return self.tag.value:dirty()
-        else
-            return self.tag.is_first
-        end
+        return self.__value:dirty()
     end,
-    process = function(self)
+    update = function(self)
         if not self:dirty() then
             return
         end
-        if getmetatable(self.tag.value) == responsive.binding.METATABLE then
-            self.tag.process_value_change(self, self.tag.value:get())
-            self.tag.value:set_dirty(false)
-        else
-            self.tag.process_value_change(self, self.tag.value)
-        end
-        self.tag.is_first = false
+
+        self.__update(self.__value:get())
+        self.__value:set_dirty(false)
+    end,
+    reset = function(self)
     end,
     dispose = function(self)
-        if getmetatable(self.tag.value) == responsive.binding.METATABLE then
-            self.tag.value:dispose()
-        end
+        self.__value:dispose()
     end
 }
 
-M.execution.create_value_execution = function(value, process_value_change)
-    return M.execution.create(M.execution.value_execution.process, M.execution.value_execution.dirty,
-        M.execution.value_execution.dispose, {
-            value = value,
-            is_first = true,
-            process_value_change = process_value_change
-        })
+setmetatable(M.updater.PROTOTYPE, M.updater.METATABLE)
+
+M.updater.create = function(value, update)
+    if getmetatable(value) ~= responsive.binding.METATABLE then
+        local _value = value
+        value = responsive.binding.create({
+            data = _value
+        }, 'data', responsive.binding.MODE.ONE_TIME)
+    end
+
+    return tools.inherit_prototype(M.updater.PROTOTYPE, {
+        __value = value,
+        __update = update
+    })
+end
+-- #endregion
+
+-- #region updater collection
+M.__updatercollection = {}
+
+M.__updatercollection.METATABLE = {
+    __type = 'kupdatercollection'
+}
+
+M.__updatercollection.PROTOTYPE = {
+    __updater_collection = tools.volatile.create(function()
+        return {}
+    end),
+    set_updater = function(self, name, updater_list)
+        if updater_list == nil then
+            updater_list = {}
+        elseif getmetatable(updater_list) == M.updater.METATABLE then
+            updater_list = {updater_list}
+        end
+
+        self.__updater_collection[name] = updater_list
+    end,
+    dirty = function(self)
+        for _, name in ipairs(self.__update_order) do
+            if self.__updater_collection[name] then
+                for _, updater in ipairs(self.__updater_collection[name]) do
+                    if updater:dirty() then
+                        return true
+                    end
+                end
+            end
+        end
+
+        return false
+    end,
+    update = function(self)
+        for _, name in ipairs(self.__update_order) do
+            if self.__updater_collection[name] then
+                for _, updater in ipairs(self.__updater_collection[name]) do
+                    updater:update()
+                end
+            end
+        end
+    end,
+    reset = function(self)
+        for _, name in ipairs(self.__update_order) do
+            if self.__updater_collection[name] then
+                for _, updater in ipairs(self.__updater_collection[name]) do
+                    updater:dispose()
+                end
+            end
+        end
+    end,
+    dispose = function(self)
+        for _, name in ipairs(self.__update_order) do
+            if self.__updater_collection[name] then
+                for _, updater in ipairs(self.__updater_collection[name]) do
+                    updater:dispose()
+                end
+            end
+        end
+        self.__updater_collection = {}
+    end
+}
+
+setmetatable(M.__updatercollection.PROTOTYPE, M.__updatercollection.METATABLE)
+
+M.__updatercollection.create = function(update_order)
+    return tools.inherit_prototype(M.__updatercollection.PROTOTYPE, {
+        __update_order = update_order
+    })
 end
 -- #endregion
 
@@ -651,15 +712,68 @@ M.vnode.PROTOTYPE = {
         return unique_id.generate('vnode')
     end),
     __disposed = false,
-    __binding_descriptor_map = nil,
     __element = nil,
     __property_table = tools.volatile.create(function()
         return {}
     end),
-    __binding_set_map = tools.volatile.create(function()
-        return {}
+    __binding_descriptor_map = nil,
+    __updater_collection = tools.volatile.create(function()
+        return M.__updatercollection.create({'property', 'style', 'child_vnode', 'child_effective_vnode_list',
+                                             'child_effective_vnode'})
     end),
-    __property_execution_list = nil,
+    __property_updater_list = nil,
+
+    __child_vnode_list = tools.volatile.create(function()
+        return tools.cacheable.create(function(self)
+            return {}
+        end)
+    end),
+    __child_effective_vnode_list = tools.volatile.create(function()
+        return responsive.reactive.create()
+    end),
+    __process_child_effective_vnode_list = function(self, child_effective_vnode_list)
+        log:trace(string.format('call process_child_effective_vnode_list, vnode: %s, #child_effective_vnode_list: %d',
+            self.__id, #child_effective_vnode_list))
+        for _, vnode in ipairs(child_effective_vnode_list) do
+            if vnode.__stage == M.vnode.STAGE.SETUP then
+                vnode:__setup()
+            end
+        end
+        for _, vnode in ipairs(child_effective_vnode_list) do
+            if vnode.__stage == M.vnode.STAGE.MOUNT then
+                vnode:__mount()
+            end
+        end
+
+        local vnode_map = {}
+        for _, vnode in ipairs(child_effective_vnode_list) do
+            vnode_map[vnode.__id] = true
+        end
+
+        for _, element in ipairs(self.__element.children) do
+            local vnode = M.vnode.get_vnode_by_element(element)
+
+            if not vnode_map[vnode.__id] then
+                vnode:__unmount()
+                vnode:__dispose()
+                element.destroy()
+            end
+        end
+
+        for index = 1, #self.__element.children do
+            local element = self.__element.children[index]
+            local vnode = child_effective_vnode_list[index]
+
+            if M.vnode.get_vnode_by_element(element) ~= vnode then
+                for index2 = index + 1, #self.__element.children do
+                    if self.__element.children[index2] == vnode then
+                        self.__element.swap_children(index, index2)
+                    end
+                end
+            end
+        end
+    end,
+
     __disposer = tools.volatile.create(function()
         return tools.disposer.create()
     end),
@@ -681,6 +795,119 @@ M.vnode.PROTOTYPE = {
 
         self.__binding_descriptor_map = binding_descriptor_map
     end,
+
+    __setup_property = function(self)
+        local data = self.__data
+        local updater_list = {}
+        local binding_map = {}
+
+        if M.vnode.ELEMENT_TYPE_MAP[self.type] then
+            for name, definition in pairs(M.vnode.ELEMENT_PROPERTY_DEFINITION) do
+                if definition.write then
+                    -- TODO: 增加双向绑定的测试用例
+                    local descriptor = self.__property_descriptor_map:get_descriptor(name)
+
+                    if descriptor then
+                        if descriptor.type == M.__propertydescriptormap.TYPE.DYNAMIC then
+                            -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
+                            local binding = responsive.binding.create(data, descriptor.value,
+                                responsive.binding.MODE.PULL)
+                            local updater = M.updater.create(binding, function(value)
+                                log:trace('设置 ' .. name .. ': ' .. tostring(value))
+                                self[name] = value
+                            end)
+
+                            table.insert(updater_list, updater)
+                        elseif descriptor.type == M.__propertydescriptormap.TYPE.MODEL then
+                            -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
+                            local binding = responsive.binding.create(data, descriptor.value,
+                                responsive.binding.MODE.PULL_AND_PUSH)
+                            local updater = M.updater.create(binding, function(value)
+                                log:trace('设置 ' .. name .. ': ' .. tostring(value))
+                                self[name] = value
+                            end)
+
+                            table.insert(updater_list, updater)
+                            binding_map[name] = binding
+                        elseif descriptor.type == M.__propertydescriptormap.TYPE.CONST then
+                            -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
+                            local updater = M.updater.create(descriptor.value, function(value)
+                                log:trace('设置 ' .. name .. ': ' .. tostring(value))
+                                self[name] = value
+                            end)
+
+                            table.insert(updater_list, updater)
+                        end
+                    end
+                end
+            end
+        elseif self.type == M.vnode.VNODE_TYPE_VIRTUAL then
+            -- TODO: 重新考虑一下虚节点的使用场景，暂时禁用
+            error('virtual is not supported temporarily')
+        else
+            error('unknown type: ' .. self.type)
+        end
+
+        self.__updater_collection:set_updater('property', updater_list)
+        rawset(self, '__property_binding_map', binding_map)
+    end,
+    __setup_style = function(self)
+        self.__updater_collection:set_updater('style',
+            M.updater.create(responsive.binding.create(nil, nil, responsive.binding.MODE.ALWAYS), function(value)
+                self.__style:__update()
+            end))
+    end,
+    __setup_child_vnode = function(self)
+        local child_vnode_list_updater_list = {}
+        for child_vnode_index, child_vnode in ipairs(self.__child_vnode_list:get(self)) do
+            child_vnode_list_updater_list[child_vnode_index] = M.updater.create(
+                child_vnode:__get_effective_vnode_list_binding(), function(child_effective_vnode_list)
+                    log:trace(string.format(
+                        'child_effective_vnode_list changed, vnode: %s, index: %d, #child_effective_vnode_list: %d',
+                        self.__id, child_vnode_index, #child_effective_vnode_list))
+                    self.__child_effective_vnode_list[child_vnode_index] = child_effective_vnode_list
+                end)
+        end
+
+        self.__updater_collection:set_updater('child_vnode', child_vnode_list_updater_list)
+    end,
+    __setup_child_effective_vnode_list = function(self)
+        self.__updater_collection:set_updater('child_effective_vnode_list',
+            M.updater.create(responsive.binding.create(responsive.computed.create(function()
+                local child_effective_vnode_flat_list = {}
+
+                for index = 1, #self.__child_vnode_list:get(self) do
+                    if self.__child_effective_vnode_list[index] then
+                        for _, child_effective_vnode in ipairs(self.__child_effective_vnode_list[index]) do
+                            table.insert(child_effective_vnode_flat_list, child_effective_vnode)
+                        end
+                    end
+                end
+
+                log:trace(string.format(
+                    'child_effective_vnode_flat_list changed, vnode: %s, #child_effective_vnode_flat_list: %d',
+                    self.__id, #child_effective_vnode_flat_list))
+
+                return {
+                    data = child_effective_vnode_flat_list
+                }
+            end), 'data', responsive.binding.MODE.PULL), function(child_effective_vnode_flat_list)
+                self:__process_child_effective_vnode_list(child_effective_vnode_flat_list)
+            end))
+    end,
+    __setup_child_effective_vnode = function(self)
+        self.__updater_collection:set_updater('child_effective_vnode',
+            M.updater.create(responsive.binding.create(nil, nil, responsive.binding.MODE.ALWAYS), function(value)
+                for index = 1, #self.__child_vnode_list:get(self) do
+                    if self.__child_effective_vnode_list[index] then
+                        for _, child_effective_vnode in ipairs(self.__child_effective_vnode_list[index]) do
+                            child_effective_vnode:__update()
+                        end
+                    end
+                end
+            end))
+    end,
+
     __setup = function(self)
         error('not implemented')
     end,
@@ -712,7 +939,8 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
                     child_vnode_list[index] = M.vnode.create({
                         parent = self,
                         template = child,
-                        data = self.__data
+                        data = self.__data,
+                        slot = self.__slot
                     })
                 end
             end
@@ -736,48 +964,6 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
             return parent_element.add({
                 type = self.type
             })
-        end
-    end,
-    __process_effective_child_vnode_list = function(self, effective_child_vnode_list)
-        log:trace(string.format('call process_effective_child_vnode_list, vnode: %s, #effective_child_vnode_list: %d',
-            self.__id, #effective_child_vnode_list))
-        for _, vnode in ipairs(effective_child_vnode_list) do
-            if vnode.__stage == M.vnode.STAGE.SETUP then
-                vnode:__setup()
-            end
-        end
-        for _, vnode in ipairs(effective_child_vnode_list) do
-            if vnode.__stage == M.vnode.STAGE.MOUNT then
-                vnode:__mount()
-            end
-        end
-
-        local vnode_map = {}
-        for _, vnode in ipairs(effective_child_vnode_list) do
-            vnode_map[vnode.__id] = true
-        end
-
-        for _, element in ipairs(self.__element.children) do
-            local vnode = M.vnode.get_vnode_by_element(element)
-
-            if not vnode_map[vnode.__id] then
-                vnode:__unmount()
-                vnode:__dispose()
-                element.destroy()
-            end
-        end
-
-        for index = 1, #self.__element.children do
-            local element = self.__element.children[index]
-            local vnode = effective_child_vnode_list[index]
-
-            if M.vnode.get_vnode_by_element(element) ~= vnode then
-                for index2 = index + 1, #self.__element.children do
-                    if self.__element.children[index2] == vnode then
-                        self.__element.swap_children(index, index2)
-                    end
-                end
-            end
         end
     end,
     -- #endregion
@@ -820,117 +1006,21 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
     -- #region stage processing
     __stage = M.vnode.STAGE.SETUP,
     __setup = function(self)
-        log:trace(string.format('call setup, vnode: %s', self.__id))
         if self.__stage ~= M.vnode.STAGE.SETUP then
             error('wrong stage, stage: ' .. self.__stage)
         end
-        local data = self.__data
-        local property_execution_list = {}
-        local property_binding_map = {}
 
-        if M.vnode.ELEMENT_TYPE_MAP[self.type] then
-            for name, definition in pairs(M.vnode.ELEMENT_PROPERTY_DEFINITION) do
-                if definition.write then
-                    -- TODO: 增加双向绑定的测试用例
-
-                    local descriptor = self.__property_descriptor_map:get_descriptor(name)
-
-                    if descriptor then
-                        if descriptor.type == M.__propertydescriptormap.TYPE.DYNAMIC then
-                            -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
-                            local binding = responsive.binding.create(data, descriptor.value,
-                                responsive.binding.MODE.PULL)
-                            local execution = M.execution.create_value_execution(binding, function(execution, value)
-                                log:trace('设置 ' .. name .. ': ' .. tostring(value))
-                                self[name] = value
-                            end)
-
-                            table.insert(property_execution_list, execution)
-                        elseif descriptor.type == M.__propertydescriptormap.TYPE.MODEL then
-                            -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
-                            local binding = responsive.binding.create(data, descriptor.value,
-                                responsive.binding.MODE.PULL_AND_PUSH)
-                            local execution = M.execution.create_value_execution(binding, function(execution, value)
-                                log:trace('设置 ' .. name .. ': ' .. tostring(value))
-                                self[name] = value
-                            end)
-
-                            table.insert(property_execution_list, execution)
-                            property_binding_map[name] = binding
-                        elseif descriptor.type == M.__propertydescriptormap.TYPE.CONST then
-                            -- TODO: 这里除了把 data 传进去当上下文外，是否还应该有个函数定制上下文
-                            local execution = M.execution.create_value_execution(descriptor.value,
-                                function(execution, value)
-                                    log:trace('设置 ' .. name .. ': ' .. tostring(value))
-                                    self[name] = value
-                                end)
-
-                            table.insert(property_execution_list, execution)
-                        end
-                    end
-                end
-            end
-        elseif self.type == M.vnode.VNODE_TYPE_VIRTUAL then
-            -- TODO: 重新考虑一下虚节点的使用场景，暂时禁用
-            error('virtual is not supported temporarily')
-        else
-            error('unknown type: ' .. self.type)
-        end
-
-        rawset(self, '__property_execution_list', property_execution_list)
-        rawset(self, '__property_binding_map', property_binding_map)
-
-        self.__disposer:add(function()
-            for _, execution in ipairs(self.__property_execution_list) do
-                execution.dispose()
-            end
-        end)
+        self:__setup_property()
+        self:__setup_style()
+        self:__setup_child_vnode()
+        self:__setup_child_effective_vnode_list()
+        self:__setup_child_effective_vnode()
 
         self.__style:__setup()
-
         for _, vnode in ipairs(self.__child_vnode_list:get(self)) do
             vnode:__setup()
         end
 
-        local effective_child_vnode_execution_list = {}
-        rawset(self, '__effective_child_vnode_list', responsive.reactive.create({}))
-
-        for child_vnode_index, child_vnode in ipairs(self.__child_vnode_list:get(self)) do
-            table.insert(effective_child_vnode_execution_list,
-                M.execution.create_value_execution(child_vnode:__get_effective_vnode_list_binding(),
-                    function(execution, effective_child_vnode_list)
-                        log:trace(string.format(
-                            'effective_child_vnode_list changed, vnode: %s, index: %d, #effective_child_vnode_list: %d',
-                            self.__id, child_vnode_index, #effective_child_vnode_list))
-                        self.__effective_child_vnode_list[child_vnode_index] = effective_child_vnode_list
-                    end))
-        end
-        rawset(self, '__effective_child_vnode_execution_list', effective_child_vnode_execution_list)
-        rawset(self, '__effective_child_vnode_execution', M.execution.create_value_execution(responsive.binding.create(
-            responsive.computed.create(function()
-                local effective_child_vnode_flat_list = {}
-
-                for index = 1, #self.__child_vnode_list:get(self) do
-                    if self.__effective_child_vnode_list[index] then
-                        for _, effective_child_vnode in ipairs(self.__effective_child_vnode_list[index]) do
-                            table.insert(effective_child_vnode_flat_list, effective_child_vnode)
-                        end
-                    end
-                end
-
-                log:trace(string.format(
-                    'effective_child_vnode_flat_list changed, vnode: %s, #effective_child_vnode_flat_list: %d',
-                    self.__id, #effective_child_vnode_flat_list))
-
-                return {
-                    data = effective_child_vnode_flat_list
-                }
-            end), 'data', responsive.binding.MODE.PULL), function(execution, effective_child_vnode_flat_list)
-            self:__process_effective_child_vnode_list(effective_child_vnode_flat_list)
-        end))
-        self.__disposer:add(function()
-            self.__effective_child_vnode_list_execution:dispose()
-        end)
         if self.type == M.vnode.VNODE_TYPE_VIRTUAL then
             rawset(self, '__stage', M.vnode.STAGE.UPDATE)
         else
@@ -938,9 +1028,6 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
         end
     end,
     __mount = function(self, element)
-        log:trace(string.format('call mount, vnode: %s, element: %d', self.__id, (element or {
-            index = -1
-        }).index))
         if self.__stage ~= M.vnode.STAGE.MOUNT then
             error('wrong stage, stage: ' .. self.__stage)
         end
@@ -959,37 +1046,13 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
         if self.type == M.vnode.VNODE_TYPE_VIRTUAL then
             error('virtual vnode cannot be updated')
         end
-        log:trace(string.format('call update, vnode: %s', self.__id))
         if self.__stage ~= M.vnode.STAGE.UPDATE then
             error('wrong stage, stage: ' .. self.__stage)
         end
-        for _, execution in ipairs(self.__property_execution_list) do
-            if execution:dirty() then
-                execution:process()
-            end
-        end
-        self.__style:__update()
 
-        for _, execution in ipairs(self.__effective_child_vnode_execution_list) do
-            if execution:dirty() then
-                log:trace(string.format('effective_child_vnode_execution_list dirty, vnode: %s', self.__id))
-                execution:process()
-            end
-        end
-        if self.__effective_child_vnode_execution:dirty() then
-            self.__effective_child_vnode_execution:process()
-        end
-
-        for index = 1, #self.__child_vnode_list:get(self) do
-            if self.__effective_child_vnode_list[index] then
-                for _, effective_child_vnode in ipairs(self.__effective_child_vnode_list[index]) do
-                    effective_child_vnode:__update()
-                end
-            end
-        end
+        self.__updater_collection:update()
     end,
     __unmount = function(self)
-        log:trace(string.format('call unmount, vnode: %s, element: %d', self.__id, (self.__element or {}).index))
         if self.__stage ~= M.vnode.STAGE.UPDATE then
             error('wrong stage, stage: ' .. self.__stage)
         end
@@ -1002,7 +1065,7 @@ M.vnode.ELEMENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
         end
 
         rawset(self, '__element', nil)
-        rawset(self, '__stage', M.vnode.STAGE.UPDATE)
+        rawset(self, '__stage', M.vnode.STAGE.MOUNT)
     end
     -- #endregion
 })
@@ -1036,6 +1099,19 @@ M.vnode.COMPONENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
             data = self.__child_vnode_list:get(self)
         }, 'data', responsive.binding.MODE.ONE_TIME)
     end,
+    __get_child_effective_vnode_list = function(self)
+        local child_effective_vnode_list = {}
+
+        for index = 1, #self.__child_vnode_list:get(self) do
+            if self.__child_effective_vnode_list[index] then
+                for _, child_effective_vnode in ipairs(self.__child_effective_vnode_list[index]) do
+                    table.insert(child_effective_vnode_list, child_effective_vnode)
+                end
+            end
+        end
+
+        return child_effective_vnode_list
+    end,
 
     __dispose = function(self)
         self.__disposer:dispose()
@@ -1044,37 +1120,87 @@ M.vnode.COMPONENT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
 
     __stage = M.vnode.STAGE.SETUP,
     __setup = function(self)
-        log:trace(string.format('call setup, vnode: %s', self.__id))
         if self.__stage ~= M.vnode.STAGE.SETUP then
             error('wrong stage, stage: ' .. self.__stage)
         end
+
+        self:__setup_child_vnode()
+        self:__setup_child_effective_vnode_list()
+        self:__setup_child_effective_vnode()
 
         for _, vnode in ipairs(self.__child_vnode_list:get(self)) do
             vnode:__setup()
         end
 
-        rawset(self, '__stage', M.vnode.STAGE.DONE)
+        rawset(self, '__stage', M.vnode.STAGE.MOUNT)
     end,
     __mount = function(self, element)
-        -- TODO: Component 是允许 mount 的，直接给第一个子节点做
-        error('component cannot mounte to element')
+        if self.__stage ~= M.vnode.STAGE.MOUNT then
+            error('wrong stage, stage: ' .. self.__stage)
+        end
+        if not element then
+            error('element is required')
+        end
+
+        rawset(self, '__element', element)
+        M.vnode.__element_key_to_vnode_map[M.vnode.get_element_key(element)] = self
+        if not self.__parent_vnode then
+            M.vnode.__root_vnode_map[self.__id] = self
+        end
+        rawset(self, '__stage', M.vnode.STAGE.UPDATE)
     end,
     __update = function(self)
-        error('component cannot update')
+        self.__updater_collection:update()
     end,
     __unmount = function(self)
-        error('component cannot unmount')
+        if self.__stage ~= M.vnode.STAGE.UPDATE then
+            error('wrong stage, stage: ' .. self.__stage)
+        end
+
+        if self.__element then
+            M.vnode.__element_key_to_vnode_map[M.vnode.get_element_key(self.__element)] = nil
+            if not self.__parent_vnode then
+                M.vnode.__root_vnode_map[self.__id] = nil
+            end
+        end
+
+        rawset(self, '__element', nil)
+        rawset(self, '__stage', M.vnode.STAGE.MOUNT)
     end
 })
 
 M.vnode.SLOT_PROTOTYPE = tools.inherit(M.vnode.PROTOTYPE, {
     __child_vnode_list = tools.volatile.create(function()
         return tools.cacheable.create(function(self)
-            return {}
+            local child_vnode_list = {}
+            local descriptor_name = self.__property_descriptor_map:get_descriptor('name')
+            local slot_name = descriptor_name and descriptor_name.value or nil
+
+            if self.__slot and slot_name and self.__slot[slot_name] then
+                child_vnode_list = self.__slot[slot_name](self, self.__data)
+                if child_vnode_list and getmetatable(child_vnode_list) == M.vnode.METATABLE then
+                    child_vnode_list = {child_vnode_list}
+                end
+            elseif (self.__template.children) then
+                for index, child in ipairs(self.__template.children) do
+                    child_vnode_list[index] = M.vnode.create({
+                        parent = self,
+                        template = child,
+                        data = self.__data,
+                        slot = self.__slot
+                    })
+                end
+            end
+
+            return child_vnode_list
         end)
     end),
     __get_effective_vnode_list_binding = function(self)
         log:trace(string.format('call get_effective_vnode_list_binding, vnode: %s', self.__id))
+
+        return responsive.binding.create({
+            data = self.__child_vnode_list:get(self)
+        }, 'data', responsive.binding.MODE.ONE_TIME)
     end,
 
     __dispose = function(self)
@@ -1208,13 +1334,13 @@ M.vnode.create = function(definition)
 
     local data = definition.data
     local parent_vnode = definition.parent
-    local slot_factory = definition.slot_factory
+    local slot = definition.slot
     local vnode = tools.inherit_prototype(M.vnode.ELEMENT_TYPE_MAP[template.type].prototype, {
         __property_descriptor_map = M.__propertydescriptormap.create(template),
         __template = template,
         __data = data,
         __parent_vnode = parent_vnode,
-        __slot_factory = slot_factory
+        __slot = slot
     })
 
     if M.vnode.ELEMENT_TYPE_MAP[template.type].vstyle then

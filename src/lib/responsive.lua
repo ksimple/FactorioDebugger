@@ -22,7 +22,6 @@ M.unref = function(ref)
     end
 end
 
--- TODO: 增加一个设置值的函数
 M.setref = function(ref, value)
     if M.is_ref(ref) then
         ref.value = value
@@ -349,10 +348,6 @@ M.reactive.create = function(object, additional_object)
 end
 -- #endregion
 
--- #region reactiveproxy
--- TODO: 增加逻辑
--- #endregion
-
 -- #region watch
 M.watch = {}
 
@@ -484,6 +479,12 @@ M.binding.PROTOTYPE = {
             return self.__value_cache_value
         end
 
+        if self.__data == nil and self.__expression == nil then
+            self.__value_cache_value = nil
+            self.__value_cache_valid = true
+            return self.__value_cache_value
+        end
+
         if self.__first_get then
             self.__watch:add_listener(M.EVENT.PROPERTY_CHANGED, function(sender, _, name, _, _)
                 log:trace(string.format('binding %s set to dirty due to %s.%s changed', self.__id, sender.__id, name))
@@ -493,41 +494,52 @@ M.binding.PROTOTYPE = {
             end)
         end
 
-        if self.__mode ~= M.binding.MODE.ONE_TIME then
+        if self.__mode ~= M.binding.MODE.ONE_TIME and self.__mode ~= M.binding.MODE.ALWAYS then
             -- 监控所有被读取的属性
             self.__watch:record()
         end
 
         local unref_data = M.unref(self.__data)
 
-        if type(unref_data) ~= 'table' then
+        if type(unref_data) ~= 'table' and self.__expression then
             self.__watch:stop()
             error(string.format('data can be table only, but %s got', type(unref_data)))
         end
-        local func = load('local unref = ... ; return unref(' .. self.__expression .. ')', nil, 't', unref_data)
 
-        ---@diagnostic disable-next-line: param-type-mismatch, redefined-local
-        local status, value = pcall(func, M.unref)
+        if self.__expression then
+            local func = load('local unref = ... ; return unref(' .. self.__expression .. ')', nil, 't', unref_data)
 
-        if not status then
-            log:warn(value)
-        end
+            ---@diagnostic disable-next-line: param-type-mismatch, redefined-local
+            local status, value = pcall(func, M.unref)
 
-        self.__watch:stop()
+            if not status then
+                log:warn(value)
+            end
 
-        log:trace(string.format('binding %s watch on %d properties', self.__id, #self.__watch.__watch_dispose_list))
+            self.__watch:stop()
 
-        if status then
-            self.__value_cache_valid = true
-            self.__value_cache_value = value
-            return self.__value_cache_value
+            log:trace(string.format('binding %s watch on %d properties', self.__id, #self.__watch.__watch_dispose_list))
+
+            if status then
+                self.__value_cache_valid = true
+                self.__value_cache_value = value
+                return self.__value_cache_value
+            else
+                self.__value_cache_valid = false
+                self.__value_cache_result = nil
+                error(value)
+            end
         else
-            self.__value_cache_valid = false
-            self.__value_cache_result = nil
-            error(value)
+            self.__watch:stop()
+            self.__value_cache_valid = true
+            self.__value_cache_value = unref_data
+            return self.__value_cache_value
         end
     end,
     dirty = function(self)
+        if self.__mode == M.binding.MODE.ALWAYS then
+            return true
+        end
         return self.__dirty
     end,
     set_dirty = function(self, value)
@@ -545,7 +557,8 @@ setmetatable(M.binding.PROTOTYPE, M.binding.METATABLE)
 M.binding.MODE = {
     PULL_AND_PUSH = 'pull_and_push',
     PULL = 'pull',
-    ONE_TIME = 'one_time'
+    ONE_TIME = 'one_time',
+    ALWAYS = 'always'
 }
 
 M.binding.create = function(data, expression, mode)

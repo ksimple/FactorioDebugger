@@ -824,6 +824,26 @@ describe('responsive', function()
 
             assert(binding:dirty())
             assert(binding:get() == 'test1')
+
+            binding:set_dirty(false)
+            assert(not binding:dirty())
+        end)
+        it('always dirty', function()
+            local helper = require('helper')
+            local responsive = require('lib.responsive')
+
+            local computed = responsive.computed.create(function()
+                return {
+                    value = 'test1'
+                }
+            end)
+            local binding = responsive.binding.create(computed, 'value', responsive.binding.MODE.ALWAYS)
+
+            assert(binding:dirty())
+            assert(binding:get() == 'test1')
+            
+            binding:set_dirty(false)
+            assert(binding:dirty())
         end)
     end)
 end)
@@ -919,7 +939,7 @@ describe('ui', function()
         end)
     end)
 
-    describe('execution', function()
+    describe('updater', function()
         it('one binding', function()
             local helper = require('helper')
             local responsive = require('lib.responsive')
@@ -932,22 +952,22 @@ describe('ui', function()
             local log_list = {}
 
             local binding = responsive.binding.create(data, 'property1', responsive.binding.MODE.PULL)
-            local execution = ui.execution.create_value_execution(binding, function(execution, value)
+            local updater = ui.updater.create(binding, function(value)
                 table.insert(log_list, 'process property1 ' .. value)
             end)
 
-            assert(execution:dirty())
-            execution:process()
-            assert(not execution:dirty())
-            execution:process()
-            assert(not execution:dirty())
+            assert(updater:dirty())
+            updater:update()
+            assert(not updater:dirty())
+            updater:update()
+            assert(not updater:dirty())
 
             data.property1 = 'test1_changed'
-            assert(execution:dirty())
-            execution:process()
-            assert(not execution:dirty())
-            execution:process()
-            assert(not execution:dirty())
+            assert(updater:dirty())
+            updater:update()
+            assert(not updater:dirty())
+            updater:update()
+            assert(not updater:dirty())
 
             log:debug(tools.table_to_json(log_list))
             assert(#log_list == 2)
@@ -968,16 +988,16 @@ describe('ui', function()
             local log_list = {}
             local binding = responsive.binding
                                 .create(data, 'property2.property3', responsive.binding.MODE.PULL_AND_PUSH)
-            local execution = ui.execution.create_value_execution(binding, function(execution, value)
+            local updater = ui.updater.create(binding, function(value)
                 table.insert(log_list, 'process property2.property3 ' .. value)
             end)
 
-            execution:process()
+            updater:update()
             assert(#log_list == 1)
 
             ---@diagnostic disable-next-line: need-check-nil
             binding:set('test3_changed')
-            execution:process()
+            updater:update()
             assert(#log_list == 1)
             assert(data.property2.property3 == 'test3_changed')
         end)
@@ -1193,12 +1213,12 @@ describe('ui', function()
                 assert(#element.children == 2)
                 assert(element.children[1].type == 'button')
                 assert(element.children[1].caption == 'test1')
-                assert(ui.vnode.get_vnode_by_element(element.children[1]) == vnode.__effective_child_vnode_list[1][1])
-                assert(element.children[1] == vnode.__effective_child_vnode_list[1][1].__element)
+                assert(ui.vnode.get_vnode_by_element(element.children[1]) == vnode.__child_effective_vnode_list[1][1])
+                assert(element.children[1] == vnode.__child_effective_vnode_list[1][1].__element)
                 assert(element.children[2].type == 'checkbox')
                 assert(element.children[2].caption == 'test3')
-                assert(ui.vnode.get_vnode_by_element(element.children[2]) == vnode.__effective_child_vnode_list[2][1])
-                assert(element.children[2] == vnode.__effective_child_vnode_list[2][1].__element)
+                assert(ui.vnode.get_vnode_by_element(element.children[2]) == vnode.__child_effective_vnode_list[2][1])
+                assert(element.children[2] == vnode.__child_effective_vnode_list[2][1].__element)
             end)
             it('change property', function()
                 local helper = require('helper')
@@ -1265,7 +1285,9 @@ describe('ui', function()
                 assert(element.children[2].caption == 'test1_changed3')
                 assert(element.children[3].caption == 'test3_changed3')
             end)
-            it('child component', function()
+        end)
+        describe('child component', function()
+            it('create', function()
                 local helper = require('helper')
                 local ui = require('lib.ui')
 
@@ -1303,7 +1325,56 @@ describe('ui', function()
                 assert(element.children[1].caption == 'test')
                 assert(element.children[2].caption == 'test')
             end)
-            it('child component with property binding', function()
+            it('create as root', function()
+                local helper = require('helper')
+                local ui = require('lib.ui')
+
+                local element = helper.create_gui_element('frame')
+                helper.clear_component_factory()
+                ui.component.register_component_factory('child_component', function(self, definition)
+                    return ui.vnode.create({
+                        template = {
+                            type = 'button',
+                            caption = 'test'
+                        },
+                        parent = definition.parent,
+                        data = definition.data
+                    })
+                end)
+                ui.component.register_component_factory('root_component', function(self, definition)
+                    return ui.vnode.create({
+                        template = {
+                            type = 'frame',
+                            children = {{
+                                type = 'component',
+                                name = 'child_component'
+                            }, {
+                                type = 'component',
+                                name = 'child_component'
+                            }}
+                        },
+                        parent = definition.parent,
+                        data = definition.data
+                    })
+                end)
+                local vnode = ui.vnode.create({
+                    template = {
+                        type = 'component',
+                        name = 'root_component'
+                    }
+                })
+
+                vnode:__setup()
+                vnode:__mount(element)
+                vnode:__update()
+
+                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+                assert(#element.children == 1)
+                assert(#element.children[1].children == 2)
+                assert(element.children[1].children[1].caption == 'test')
+                assert(element.children[1].children[2].caption == 'test')
+            end)
+            it('property binding', function()
                 local helper = require('helper')
                 local ui = require('lib.ui')
                 local responsive = require('lib.responsive')
@@ -1357,7 +1428,7 @@ describe('ui', function()
                 assert(element.children[1].caption == 'test2')
                 assert(element.children[2].caption == 'test3')
             end)
-            it('child component with data binding', function()
+            it('data binding', function()
                 local helper = require('helper')
                 local ui = require('lib.ui')
                 local responsive = require('lib.responsive')
@@ -1445,6 +1516,76 @@ describe('ui', function()
                 assert(#element.children == 2)
                 assert(element.children[1].caption == 'test2_changed2')
                 assert(element.children[2].caption == 'test3_changed2')
+            end)
+        end)
+        describe('slot', function()
+            it('create without override', function()
+                local helper = require('helper')
+                local ui = require('lib.ui')
+
+                local element = helper.create_gui_element('frame')
+                local vnode = ui.vnode.create({
+                    template = {
+                        type = 'frame',
+                        children = {{
+                            type = 'slot',
+                            name = 'slot1',
+                            children = {{
+                                type = 'button',
+                                caption = 'test1'
+                            }}
+                        }}
+                    }
+                })
+
+                vnode:__setup()
+                vnode:__mount(element)
+                vnode:__update()
+
+                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+                assert(#element.children == 1)
+                assert(element.children[1].type == 'button')
+                assert(element.children[1].caption == 'test1')
+            end)
+            it('create with override', function()
+                local helper = require('helper')
+                local ui = require('lib.ui')
+
+                local element = helper.create_gui_element('frame')
+                local vnode = ui.vnode.create({
+                    template = {
+                        type = 'frame',
+                        children = {{
+                            type = 'slot',
+                            name = 'slot1',
+                            children = {{
+                                type = 'button',
+                                caption = 'test1'
+                            }}
+                        }}
+                    },
+                    slot = {
+                        slot1 = function(parent, data)
+                            return ui.vnode.create({
+                                template = {
+                                    type = 'button',
+                                    caption = 'test2'
+                                },
+                                parent = parent,
+                                data = data
+                            })
+                        end
+                    }
+                })
+
+                vnode:__setup()
+                vnode:__mount(element)
+                vnode:__update()
+
+                log:debug(helper.clone_table(element, helper.drop_vnode_ref))
+                assert(#element.children == 1)
+                assert(element.children[1].type == 'button')
+                assert(element.children[1].caption == 'test2')
             end)
         end)
         it('dispose', function()
